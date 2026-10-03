@@ -1,7 +1,7 @@
 # Dark Factory Implementation Checklist
 
 **Project:** dark-factory-teamplate (orchestrator)  
-**Target Project:** https://github.com/mtourk/investisor  
+**Target Project:** Configurable per `profiles/` (see ADR-004) — investisor was Phase 1's illustrative example only, not a fixed target  
 **Started:** 2026-10-03  
 **Authority:** DARK_FACTORY_MASTER_PLAN.md (binding)  
 **Build Prompt:** DARK_FACTORY_BUILD_PROMPT.md  
@@ -621,9 +621,53 @@
 **Current Phase:** 1 (Audit and Threat Model)  
 **Model Download:** In progress (qwen2.5-coder:32b)  
 **GitHub Auth:** Pending (user will run `gh auth login`)  
-**Target Repo:** https://github.com/mtourk/investisor  
+**Target Repo:** Configurable per `profiles/` (ADR-004) — not a fixed repo  
 **Cloudflare:** Account ID and API Token received (will configure in Phase 13)  
-**Remaining Prerequisites:** gh auth, investisor repo labels configured (Phase 4)
+**Remaining Prerequisites:** gh auth, per-profile repo labels configured (Phase 4, per profile)
+
+---
+
+## Phase 17: Multi-Channel Intake (extension, post-master-plan)
+
+**Added:** 2026-10-03, by explicit user request — brainstormed collaboratively, not part of the original 16-phase master plan. Design-only until the user approves implementation; see ADR-004/ADR-005 for the decisions behind it.
+
+**Why:** every prior phase assumes a requirement already exists as a GitHub Issue. Phase 17 is the "front door" that lets a requirement arrive as a web form submission, a live voice conversation, a Telegram message, an email, or (later) a WhatsApp message, and resolves it into a well-formed `factory:ready` Issue — without changing anything in Phases 1–16.
+
+### Deliverables
+
+- [ ] `factory/intake/` — Channel Adapter interface: normalizes any channel into a `RawIntakeMessage` (sender id, text, media, channel)
+- [ ] Sender allow-list enforcement (reject unknown senders on every channel before any GitHub/profile action)
+- [ ] Profile resolution: map an intake message to an existing profile, or route brand-new-repo setup to the web channel only (never accept credentials via chat/email/voice)
+- [ ] State-transition notifier: watches existing GitHub label/state transitions (Coleam-style visible state, already produced by Phases 4/12/14/15) and pushes a short message to the originating channel plus updates the web dashboard
+- [ ] **Phase 17.0 — Web page (primary interface)**
+  - Profile select/create UI (wraps existing `factory profile create/list/show`)
+  - Discovery conversation: Gemini Live (voice) or typed chat, full back-and-forth clarification (per ADR-005) until the spec converges
+  - Files the resulting draft as a GitHub Issue (`factory:ready`) on the resolved profile's target repo
+  - Live dashboard: run state, evidence, decision history, per profile
+  - Gemini API key held as a Cloudflare Worker secret; the Worker's only job is minting short-lived ephemeral Gemini Live tokens — the long-lived key never reaches the browser or any local file (per ADR-005)
+- [ ] **Phase 17.1 — Telegram adapter**
+  - Bot API long-polling (no public endpoint required)
+  - Text and voice-note input; voice notes also go through the Gemini Live discovery flow
+  - Progress pushed as replies in the originating chat
+- [ ] **Phase 17.2 — Email adapter**
+  - IMAP polling (no public endpoint required)
+  - Longer-form specs and attachments; progress replies sent as thread replies (best-effort; email is not a "continuous" medium)
+- [ ] **Phase 17.3 — WhatsApp adapter**
+  - Official Cloud API, requires a public HTTPS webhook (tunnel) — deferred until 17.0–17.2 prove the pattern
+- [ ] Tests: allow-list rejection, profile resolution (existing/ambiguous/new), notifier fan-out to origin channel, and a secret-leak guard (no GitHub/Cloudflare/Gemini credential ever appears in a chat transcript, log, or browser-reachable response)
+
+### Secondary Checks
+
+- [ ] No channel can create or modify a profile's secrets — only the web page's one-time setup flow can
+- [ ] Gemini Live is used only for pre-filing discovery; nothing downstream of Issue creation uses a cloud model (ADR-005 boundary holds)
+- [ ] Phase 7's existing decision-required escalation still handles in-flight ambiguity; Phase 17 does not duplicate it
+
+### Gate
+
+- [ ] Web intake (text or Gemini Live voice) produces a well-formed `factory:ready` Issue on the correct profile's repo
+- [ ] Progress is pushed to the originating channel and visible on the web dashboard for the same run
+- [ ] No secret (GitHub, Cloudflare, or Gemini) ever reaches a chat transcript, email, log, or client-side JS
+- [ ] Commit: "Phase 17.0: Multi-channel intake — web page and Gemini Live discovery"
 
 ---
 
