@@ -722,4 +722,4 @@
 
 ---
 
-*Last updated: 2026-10-04 — added Phase 18 (ADR-007)*
+*Last updated: 2026-10-04 — added Phase 18 (ADR-007); added `docs/operations/INTAKE_DEPLOYMENT_PLAYBOOK.md` (proven commands + known-blocked commands for the factory to follow)*
