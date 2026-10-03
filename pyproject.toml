@@ -1,0 +1,66 @@
+[project]
+name = "factory"
+version = "0.1.0"
+description = "Dark Factory: Windows-native autonomous delivery using local LLM (FactoryFlow orchestrator)"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "Dark Factory Contributors" }
+]
+
+dependencies = [
+    "typer[all]==0.9.0",
+    "pydantic==2.5.3",
+    "pydantic-settings==2.1.0",
+    "sqlalchemy==2.0.23",
+    "jinja2==3.1.2",
+    "pyyaml==6.0.1",
+    "httpx==0.25.2",
+    "aiofiles==23.2.1",
+    "opentelemetry-api==1.20.0",
+    "opentelemetry-sdk==1.20.0",
+    "opentelemetry-exporter-otlp==0.41b0",
+    "python-dotenv==1.0.0",
+    "aider-chat==0.35.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==7.4.3",
+    "pytest-asyncio==0.21.1",
+    "pytest-cov==4.1.0",
+    "black==23.12.0",
+    "ruff==0.1.8",
+    "mypy==1.7.1",
+]
+
+[project.scripts]
+factory = "factory.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["factory"]
+
+[tool.black]
+line-length = 120
+target-version = ["py312"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+select = ["E", "F", "W", "I"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
