@@ -35,6 +35,8 @@ export interface Env {
   GEMINI_API_KEY: string;
   ENVIRONMENT: string;
   GITHUB_ORG: string;
+  VERSION?: string;
+  DEPLOYED_AT?: string;
 }
 
 const CORS_HEADERS = {
@@ -58,6 +60,10 @@ export default {
       // Route dispatcher
       if (path === "/conversations" && method === "POST") {
         return await handleCreateConversation(env);
+      }
+
+      if (path === "/version" && method === "GET") {
+        return await handleGetVersion(env);
       }
 
       const conversationMatch = path.match(/^\/conversations\/([^/]+)$/);
@@ -108,6 +114,12 @@ export default {
 };
 
 // ============ Handlers ============
+
+async function handleGetVersion(env: Env): Promise<Response> {
+  const version = env.VERSION || "unknown";
+  const deployed_at = env.DEPLOYED_AT || new Date().toISOString();
+  return json({ version, deployed_at });
+}
 
 async function handleCreateConversation(env: Env): Promise<Response> {
   const db = new IntakeDB(env.DB);

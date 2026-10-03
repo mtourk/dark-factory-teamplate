@@ -6,6 +6,8 @@ compatibility_date = "2024-10-15"
 GITHUB_API_BASE = "https://api.github.com"
 ENVIRONMENT = "production"
 GITHUB_ORG = "mtourk"
+VERSION = "2"
+DEPLOYED_AT = "2026-10-03T23:43:18Z"
 
 [[d1_databases]]
 binding = "DB"

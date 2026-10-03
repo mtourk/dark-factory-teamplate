@@ -567,3 +567,4 @@ function escapeHtml(text) {
 
 // Start the app
 document.addEventListener("DOMContentLoaded", init);
+document.addEventListener("DOMContentLoaded", updateVersionFooter);
