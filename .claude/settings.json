@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(git status)",
+      "Bash(git log *)",
+      "Bash(git diff *)"
+    ]
+  }
+}
+
+Or run this in PowerShell:
+@'
+{
+  "permissions": {
+    "allow": [
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(git status)",
+      "Bash(git log *)",
+      "Bash(git diff *)"
+    ]
+  }
+}
+'@ | Out-File -FilePath C:\github-repos\dark-factory-teamplate\.claude\settings.json -Encoding utf8
