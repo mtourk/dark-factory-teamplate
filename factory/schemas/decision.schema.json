@@ -1,0 +1,145 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Decision Record Schema",
+  "description": "Strategic or architectural decision record (Phase 1+, docs/decisions/ADR-*.md). Immutable record of what was decided, why, and by what authority.",
+  "type": "object",
+  "required": [
+    "adr_id",
+    "title",
+    "date",
+    "status",
+    "decision",
+    "context",
+    "rationale"
+  ],
+  "properties": {
+    "adr_id": {
+      "type": "string",
+      "pattern": "^ADR-\\d{3}$",
+      "description": "Unique ADR identifier (001–999)"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 200,
+      "description": "Concise decision title"
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date decision was made"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "PROPOSED",
+        "APPROVED",
+        "SUPERSEDED",
+        "IMPLEMENTED"
+      ],
+      "description": "Decision status"
+    },
+    "decision": {
+      "type": "string",
+      "minLength": 20,
+      "description": "Clear statement of what was decided and why (2–3 sentences)"
+    },
+    "context": {
+      "type": "string",
+      "description": "Background: master plan section, threat model concern, blocked issue, or user request"
+    },
+    "options_considered": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "option",
+          "tradeoffs"
+        ],
+        "properties": {
+          "option": {
+            "type": "string"
+          },
+          "tradeoffs": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Options evaluated; at least 2 required"
+    },
+    "rationale": {
+      "type": "string",
+      "minLength": 20,
+      "description": "Why this option was chosen; evidence cited"
+    },
+    "consequences": {
+      "type": "string",
+      "description": "What changes as a result; implementation phase; risks accepted"
+    },
+    "evidence": {
+      "type": "object",
+      "properties": {
+        "linked_issue": {
+          "type": "string",
+          "description": "GitHub issue URL or title"
+        },
+        "master_plan_section": {
+          "type": "string",
+          "description": "Section reference (e.g., '§1', '§8')"
+        },
+        "threat_model_category": {
+          "type": "string",
+          "description": "If applicable, threat category from threat-model.md"
+        },
+        "phase": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16,
+          "description": "Which phase implements or depends on this decision"
+        }
+      },
+      "description": "Evidence sources for the decision"
+    },
+    "author": {
+      "type": "string",
+      "description": "Who made the decision (e.g., 'user input', 'Phase 7 synthesis', 'autonomous Phase X')"
+    },
+    "superseded_by": {
+      "type": "string",
+      "pattern": "^ADR-\\d{3}$",
+      "description": "If status=SUPERSEDED, reference new ADR"
+    }
+  },
+  "examples": [
+    {
+      "adr_id": "ADR-001",
+      "title": "Single Model (qwen2.5-coder:32b) for All Roles",
+      "date": "2026-10-03",
+      "status": "APPROVED",
+      "decision": "Use one Ollama model (qwen2.5-coder:32b, Q4 quantization) for all factory roles (router, analyst, builder, reviewer) instead of multi-model setup to simplify configuration and reduce memory churn.",
+      "context": "Master plan §1 specifies 'Do not assume the largest model is operationally best'. Plan §8 recommends benchmark candidates: 7b, 14b, 32b, 30b variants. User hardware: 32 GB RAM, 0 dedicated VRAM, sequential inference. Qwen2.5-coder:32b estimated ~18–20 GB RAM (Q4).",
+      "options_considered": [
+        {
+          "option": "Multi-model (7b+14b+32b+30b)",
+          "tradeoffs": "Better specialized performance, complex switching, more memory churn"
+        },
+        {
+          "option": "Single 32b model (CHOSEN)",
+          "tradeoffs": "Simpler config, all roles use same context, ~18–20 GB RAM, less specialized"
+        },
+        {
+          "option": "Single 14b model",
+          "tradeoffs": "Faster inference, lower capability, weaker for reviewer"
+        }
+      ],
+      "rationale": "Single model avoids complexity of model-switching logic (Phase 6). 32b is capable enough for all roles while fitting in RAM with margin. Simpler benchmarking story. User expressed preference for simplicity.",
+      "consequences": "Phase 6 Model Gateway: all roles alias to qwen2.5-coder:32b. Phase 3: pyproject.toml lists one model. Phase 8: OPA policy treats all roles with same constraints. If 32b is too slow, fallback to 14b documented in Phase 6.",
+      "evidence": {
+        "linked_issue": "User input during Phase 1 prerequisite questions",
+        "master_plan_section": "§1, §8",
+        "phase": 3
+      },
+      "author": "User decision (2026-10-03)"
+    }
+  ]
+}

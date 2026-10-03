@@ -1,0 +1,217 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Context Manifest Schema",
+  "description": "Metadata for context packages passed to agent roles (Phase 5, §6.3). Declares what is included, excluded, and why.",
+  "type": "object",
+  "required": [
+    "manifest_id",
+    "project_id",
+    "run_id",
+    "role",
+    "session_id",
+    "source_artifacts",
+    "exclusions",
+    "policy_decision",
+    "timestamp",
+    "manifest_hash"
+  ],
+  "properties": {
+    "manifest_id": {
+      "type": "string",
+      "pattern": "^manifest-[a-z0-9-]{16}$",
+      "description": "Unique manifest ID (immutable record)"
+    },
+    "project_id": {
+      "type": "string",
+      "description": "Project identifier (e.g., 'investisor')"
+    },
+    "run_id": {
+      "type": "string",
+      "pattern": "^RUN-[a-z0-9]{8}$",
+      "description": "Run identifier linking all roles in one delivery attempt"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "analyst",
+        "product_critic",
+        "domain_critic",
+        "testability_critic",
+        "security_critic",
+        "contradiction_critic",
+        "operational_critic",
+        "planner",
+        "builder",
+        "repairer",
+        "sealed_qa",
+        "reviewer",
+        "orchestrator"
+      ],
+      "description": "Role that will receive this context package"
+    },
+    "session_id": {
+      "type": "string",
+      "description": "Unique session ID for this role (fresh conversation)"
+    },
+    "source_artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "artifact_id",
+          "artifact_type",
+          "source_phase",
+          "hash_sha256"
+        ],
+        "properties": {
+          "artifact_id": {
+            "type": "string",
+            "description": "Identifier of included artifact"
+          },
+          "artifact_type": {
+            "type": "string",
+            "enum": [
+              "governance",
+              "certified_knowledge",
+              "compiled_intent",
+              "approved_plan",
+              "acceptance_criteria",
+              "test_results",
+              "sealed_summary",
+              "mutation_results",
+              "security_results",
+              "evidence_manifest",
+              "ado",
+              "other"
+            ]
+          },
+          "source_phase": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 16,
+            "description": "Phase that produced this artifact"
+          },
+          "hash_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "description": "SHA-256 hash of artifact content for integrity"
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Artifacts included in this context package"
+    },
+    "exclusions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "excluded_type",
+          "reason"
+        ],
+        "properties": {
+          "excluded_type": {
+            "type": "string",
+            "enum": [
+              "builder_chat",
+              "builder_notes",
+              "repair_logs",
+              "reviewer_rubric",
+              "sealed_tests",
+              "mutation_definitions",
+              "credentials",
+              "other_role_conversation",
+              "proprietary_info"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why this category is excluded (e.g., 'sealed from builder', 'reviewer independence')"
+          }
+        }
+      },
+      "description": "Categories deliberately excluded from this package (per §6)"
+    },
+    "policy_decision": {
+      "type": "object",
+      "required": [
+        "isolation_level",
+        "approved_by",
+        "approval_timestamp"
+      ],
+      "properties": {
+        "isolation_level": {
+          "type": "string",
+          "enum": [
+            "shared",
+            "role_private",
+            "sealed"
+          ]
+        },
+        "approved_by": {
+          "type": "string",
+          "description": "Authority that approved this context (e.g., 'orchestrator', 'phase-5-gate')"
+        },
+        "approval_timestamp": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "description": "Policy approval record for this context package"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When manifest was created"
+    },
+    "manifest_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "SHA-256 of entire manifest (for integrity after transmission)"
+    }
+  },
+  "examples": [
+    {
+      "manifest_id": "manifest-abc123def456g",
+      "project_id": "investisor",
+      "run_id": "RUN-20261003",
+      "role": "builder",
+      "session_id": "sess-builder-xyz789",
+      "source_artifacts": [
+        {
+          "artifact_id": "compiled-intent-v1",
+          "artifact_type": "compiled_intent",
+          "source_phase": 7,
+          "hash_sha256": "abc123def456...",
+          "description": "Synthesized requirement from issue + BMAD + critics"
+        },
+        {
+          "artifact_id": "approved-plan-v1",
+          "artifact_type": "approved_plan",
+          "source_phase": 7,
+          "hash_sha256": "def456abc789...",
+          "description": "Architecture and implementation strategy"
+        }
+      ],
+      "exclusions": [
+        {
+          "excluded_type": "sealed_tests",
+          "reason": "Builder must not see hidden acceptance criteria (§9)"
+        },
+        {
+          "excluded_type": "reviewer_rubric",
+          "reason": "Builder independence from review criteria"
+        }
+      ],
+      "policy_decision": {
+        "isolation_level": "role_private",
+        "approved_by": "orchestrator",
+        "approval_timestamp": "2026-10-03T16:30:00Z"
+      },
+      "timestamp": "2026-10-03T16:30:00Z",
+      "manifest_hash": "fedcba9876543210..."
+    }
+  ]
+}

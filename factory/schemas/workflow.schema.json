@@ -1,0 +1,215 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "FactoryFlow Workflow Definition",
+  "description": "YAML workflow schema for FactoryFlow orchestrator (Phase 3-16 automation). Defines stages, transitions, context policies, and retry logic.",
+  "type": "object",
+  "required": [
+    "version",
+    "name",
+    "description",
+    "stages"
+  ],
+  "properties": {
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+      "description": "Semantic version of workflow definition"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "description": "Workflow name (e.g., 'issue-to-pr', 'build-verify-deploy')"
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable workflow purpose"
+    },
+    "stages": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/stage"
+      },
+      "description": "Ordered list of workflow stages"
+    },
+    "context_policy": {
+      "type": "string",
+      "enum": [
+        "shared",
+        "role_private",
+        "sealed"
+      ],
+      "description": "Default context isolation level for all stages unless overridden"
+    }
+  },
+  "definitions": {
+    "stage": {
+      "type": "object",
+      "required": [
+        "id",
+        "type",
+        "input_schema",
+        "output_schema",
+        "timeout_seconds",
+        "max_attempts"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9_-]+$",
+          "description": "Unique stage identifier within workflow"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "command",
+            "function",
+            "agent",
+            "decision",
+            "conditional",
+            "command_group",
+            "bounded_loop",
+            "external_check",
+            "terminal"
+          ],
+          "description": "Stage execution type (per §4.3)"
+        },
+        "description": {
+          "type": "string",
+          "description": "Stage purpose"
+        },
+        "input_schema": {
+          "type": "object",
+          "description": "Pydantic schema for input validation (JSON representation)"
+        },
+        "output_schema": {
+          "type": "object",
+          "description": "Pydantic schema for output validation (JSON representation)"
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 3600,
+          "description": "Maximum execution time before timeout"
+        },
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "description": "Maximum retry attempts (per §12 bounded repair)"
+        },
+        "context_policy": {
+          "type": "string",
+          "enum": [
+            "shared",
+            "role_private",
+            "sealed"
+          ],
+          "description": "Context isolation for this stage (overrides workflow default)"
+        },
+        "transitions": {
+          "type": "object",
+          "properties": {
+            "success": {
+              "type": "string",
+              "description": "Next stage on success (stage id or 'terminal')"
+            },
+            "failure": {
+              "type": "string",
+              "description": "Next stage on failure (repair, escalate, or 'terminal')"
+            },
+            "decision_required": {
+              "type": "string",
+              "description": "Next stage if decision needed (decision stage id)"
+            }
+          },
+          "required": [
+            "success",
+            "failure"
+          ],
+          "description": "State transitions after stage execution"
+        },
+        "tool_policy": {
+          "type": "string",
+          "description": "OPA policy context ID for tool authorization (Phase 8)"
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "version": "1.0.0",
+      "name": "issue-to-pr",
+      "description": "Full autonomous delivery from GitHub Issue to PR auto-merge",
+      "context_policy": "shared",
+      "stages": [
+        {
+          "id": "claim_issue",
+          "type": "command",
+          "description": "Atomically claim eligible GitHub Issue",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "issue_number": {
+                "type": "integer"
+              }
+            }
+          },
+          "output_schema": {
+            "type": "object",
+            "properties": {
+              "claim_id": {
+                "type": "string"
+              },
+              "issue_title": {
+                "type": "string"
+              }
+            }
+          },
+          "timeout_seconds": 30,
+          "max_attempts": 1,
+          "transitions": {
+            "success": "analyze_requirement",
+            "failure": "terminal"
+          }
+        },
+        {
+          "id": "analyze_requirement",
+          "type": "agent",
+          "description": "BMAD analysis + isolated critics (Phase 7)",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "timeout_seconds": 600,
+          "max_attempts": 1,
+          "context_policy": "shared",
+          "transitions": {
+            "success": "check_ambiguity",
+            "failure": "terminal"
+          }
+        },
+        {
+          "id": "check_ambiguity",
+          "type": "decision",
+          "description": "Classify findings: strategic_ambiguity escalates, others resolve",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "timeout_seconds": 10,
+          "max_attempts": 1,
+          "transitions": {
+            "success": "implement",
+            "decision_required": "terminal"
+          }
+        }
+      ]
+    }
+  ]
+}

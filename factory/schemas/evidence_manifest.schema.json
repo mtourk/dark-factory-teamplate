@@ -1,0 +1,389 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Evidence Manifest Schema",
+  "description": "Complete traceability record for one delivery run (Phase 15, §16). Links requirements to implementation, tests, review, production validation.",
+  "type": "object",
+  "required": [
+    "evidence_id",
+    "project_id",
+    "run_id",
+    "issue_number",
+    "base_sha",
+    "head_sha",
+    "deployed_sha",
+    "requirements",
+    "gates",
+    "context_packages",
+    "tests",
+    "security_results",
+    "mutation_results",
+    "review_verdict",
+    "preview_result",
+    "production_validation",
+    "timestamp"
+  ],
+  "properties": {
+    "evidence_id": {
+      "type": "string",
+      "pattern": "^evidence-[a-z0-9-]{16}$",
+      "description": "Unique evidence manifest identifier"
+    },
+    "project_id": {
+      "type": "string",
+      "description": "Project (e.g., 'investisor')"
+    },
+    "run_id": {
+      "type": "string",
+      "pattern": "^RUN-[a-z0-9]{8}$"
+    },
+    "issue_number": {
+      "type": "integer",
+      "description": "GitHub issue that drove this delivery"
+    },
+    "base_sha": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$",
+      "description": "Base commit (main at claim time)"
+    },
+    "head_sha": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$",
+      "description": "Final commit (exact SHA that was reviewed and merged)"
+    },
+    "deployed_sha": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$",
+      "description": "SHA deployed to production (must equal head_sha)"
+    },
+    "requirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "requirement_id",
+          "statement",
+          "status"
+        ],
+        "properties": {
+          "requirement_id": {
+            "type": "string"
+          },
+          "statement": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "demonstrated",
+              "verified",
+              "not_applicable",
+              "blocked"
+            ]
+          },
+          "demonstrated_by": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Commit, test, or artifact that demonstrates requirement"
+          }
+        }
+      },
+      "description": "Requirements and their demonstration status"
+    },
+    "gates": {
+      "type": "object",
+      "properties": {
+        "intent_validation": {
+          "type": "boolean",
+          "description": "Compiled intent valid and sourced"
+        },
+        "authority_check": {
+          "type": "boolean",
+          "description": "Authority allows merge, no governance violations"
+        },
+        "protected_paths": {
+          "type": "boolean",
+          "description": "No protected paths modified"
+        },
+        "format": {
+          "type": "boolean"
+        },
+        "lint": {
+          "type": "boolean"
+        },
+        "typecheck": {
+          "type": "boolean"
+        },
+        "build": {
+          "type": "boolean"
+        },
+        "unit_tests": {
+          "type": "boolean"
+        },
+        "contract_tests": {
+          "type": "boolean"
+        },
+        "integration_tests": {
+          "type": "boolean"
+        },
+        "security_check": {
+          "type": "boolean"
+        },
+        "mutation_testing": {
+          "type": "boolean"
+        },
+        "sealed_qa": {
+          "type": "boolean"
+        },
+        "independent_review": {
+          "type": "boolean"
+        },
+        "preview": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "intent_validation",
+        "authority_check",
+        "protected_paths",
+        "format",
+        "lint",
+        "typecheck",
+        "build",
+        "unit_tests",
+        "sealed_qa",
+        "independent_review",
+        "preview"
+      ],
+      "description": "All required checks passed (per §14)"
+    },
+    "context_packages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "package_id",
+          "role",
+          "hash"
+        ],
+        "properties": {
+          "package_id": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "hash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        }
+      },
+      "description": "Context packages for each role (traceability)"
+    },
+    "tests": {
+      "type": "object",
+      "properties": {
+        "unit": {
+          "type": "object",
+          "properties": {
+            "passed": {
+              "type": "integer"
+            },
+            "failed": {
+              "type": "integer"
+            },
+            "log": {
+              "type": "string"
+            }
+          }
+        },
+        "integration": {
+          "type": "object",
+          "properties": {
+            "passed": {
+              "type": "integer"
+            },
+            "failed": {
+              "type": "integer"
+            },
+            "log": {
+              "type": "string"
+            }
+          }
+        },
+        "sealed_acceptance": {
+          "type": "object",
+          "properties": {
+            "passed": {
+              "type": "boolean"
+            },
+            "summary": {
+              "type": "string",
+              "description": "Observable behavior only (not internal test logic)"
+            }
+          }
+        }
+      },
+      "description": "Test results (public only; sealed test details never exposed)"
+    },
+    "security_results": {
+      "type": "object",
+      "properties": {
+        "secrets_scan": {
+          "type": "boolean"
+        },
+        "static_analysis": {
+          "type": "boolean"
+        },
+        "dependency_scan": {
+          "type": "boolean"
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "severity": {
+                "type": "string",
+                "enum": [
+                  "info",
+                  "low",
+                  "medium",
+                  "high",
+                  "critical"
+                ]
+              },
+              "resolved": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      },
+      "description": "Security verification results"
+    },
+    "mutation_results": {
+      "type": "object",
+      "properties": {
+        "total_mutations": {
+          "type": "integer"
+        },
+        "killed": {
+          "type": "integer"
+        },
+        "survived": {
+          "type": "integer"
+        },
+        "survival_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "acceptable": {
+          "type": "boolean",
+          "description": "Survival rate within policy"
+        }
+      },
+      "description": "Mutation testing report (Phase 9)"
+    },
+    "review_verdict": {
+      "type": "object",
+      "required": [
+        "status",
+        "reviewed_sha",
+        "reviewed_by_role"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "approved",
+            "rejected",
+            "decision_required"
+          ]
+        },
+        "reviewed_sha": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$",
+          "description": "Exact SHA that reviewer approved (must match head_sha for auto-merge)"
+        },
+        "reviewed_by_role": {
+          "type": "string",
+          "enum": [
+            "reviewer"
+          ]
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "description": "Review findings (if any)"
+        }
+      },
+      "description": "Independent review result (Phase 11, §11)"
+    },
+    "preview_result": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "health_check": {
+          "type": "boolean"
+        },
+        "smoke_tests": {
+          "type": "boolean"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "description": "Cloudflare preview deployment result (Phase 13)"
+    },
+    "production_validation": {
+      "type": "object",
+      "properties": {
+        "deployed": {
+          "type": "boolean"
+        },
+        "version_verified": {
+          "type": "boolean",
+          "description": "Deployed version SHA matches expected"
+        },
+        "health_check": {
+          "type": "boolean"
+        },
+        "critical_behavior": {
+          "type": "boolean"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "healthy",
+            "degraded",
+            "failed",
+            "unknown"
+          ]
+        }
+      },
+      "description": "Production deployment validation (Phase 14, §15)"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When manifest was finalized"
+    }
+  }
+}

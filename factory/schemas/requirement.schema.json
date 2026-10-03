@@ -1,0 +1,444 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Compiled Intent Schema",
+  "description": "Synthesized requirement output from BMAD analysis + isolated critics (Phase 7). Result of issue analysis with all contradictions resolved and business meaning clarified.",
+  "type": "object",
+  "required": [
+    "intent_id",
+    "project_id",
+    "run_id",
+    "issue_number",
+    "title",
+    "actors",
+    "permissions",
+    "acceptance_criteria",
+    "non_goals",
+    "constraints",
+    "data_behavior",
+    "error_handling",
+    "scope",
+    "contradictions",
+    "strategic_ambiguities",
+    "source_evidence",
+    "compiled_at"
+  ],
+  "properties": {
+    "intent_id": {
+      "type": "string",
+      "pattern": "^intent-[a-z0-9-]{16}$"
+    },
+    "project_id": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string",
+      "pattern": "^RUN-[a-z0-9]{8}$"
+    },
+    "issue_number": {
+      "type": "integer",
+      "description": "GitHub issue that originated this requirement"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 500,
+      "description": "User-visible feature or fix name"
+    },
+    "actors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "actor_type",
+          "description"
+        ],
+        "properties": {
+          "actor_type": {
+            "type": "string",
+            "enum": [
+              "user",
+              "system",
+              "external_service",
+              "admin"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "description": "Actors involved (per §7 permission critiqu)"
+    },
+    "permissions": {
+      "type": "object",
+      "properties": {
+        "required": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Permissions needed to implement"
+        },
+        "denied": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Permissions explicitly not granted"
+        }
+      },
+      "description": "Permission matrix (Security/Permissions Critic, Phase 7)"
+    },
+    "acceptance_criteria": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "criterion_id",
+          "observable_behavior",
+          "verification_method"
+        ],
+        "properties": {
+          "criterion_id": {
+            "type": "string"
+          },
+          "observable_behavior": {
+            "type": "string",
+            "description": "What the user/system can verify (not internal implementation)"
+          },
+          "verification_method": {
+            "type": "string",
+            "enum": [
+              "unit_test",
+              "integration_test",
+              "sealed_acceptance",
+              "manual",
+              "smoke_test"
+            ]
+          },
+          "preconditions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "postconditions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "minItems": 1,
+      "description": "Observable acceptance criteria (Testability Critic, Phase 7)"
+    },
+    "non_goals": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "What this requirement explicitly does NOT include"
+    },
+    "constraints": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Technical or business constraints (performance, compatibility, etc.)"
+    },
+    "data_behavior": {
+      "type": "object",
+      "properties": {
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "validation": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "data_retention": {
+          "type": "string",
+          "description": "How long data is stored (compliance, privacy)"
+        },
+        "encryption": {
+          "type": "string",
+          "description": "Encryption requirements"
+        }
+      },
+      "description": "Data flow, types, retention, encryption (Domain Rule & Security Critics)"
+    },
+    "error_handling": {
+      "type": "object",
+      "properties": {
+        "expected_failures": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "error_type": {
+                "type": "string"
+              },
+              "user_message": {
+                "type": "string"
+              },
+              "recovery_action": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "silent_failures_allowed": {
+          "type": "boolean",
+          "description": "Whether missing error reporting is acceptable"
+        }
+      },
+      "description": "Error scenarios and recovery (Operational Recovery Critic, Phase 7)"
+    },
+    "scope": {
+      "type": "object",
+      "properties": {
+        "services_affected": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "databases_affected": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "backwards_compatibility": {
+          "type": "string",
+          "enum": [
+            "required",
+            "not_required",
+            "migration_provided"
+          ]
+        }
+      },
+      "description": "Scope and impact boundaries"
+    },
+    "contradictions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "statement_a",
+          "statement_b",
+          "resolution"
+        ],
+        "properties": {
+          "statement_a": {
+            "type": "string"
+          },
+          "statement_b": {
+            "type": "string"
+          },
+          "resolution": {
+            "type": "string",
+            "description": "How contradiction was resolved (Contradiction Critic output)"
+          },
+          "source": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Contradictions found and resolved (Phase 7)"
+    },
+    "strategic_ambiguities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "ambiguity",
+          "escalation_status"
+        ],
+        "properties": {
+          "ambiguity": {
+            "type": "string",
+            "description": "Unresolved business question"
+          },
+          "escalation_status": {
+            "type": "string",
+            "enum": [
+              "pending_decision",
+              "decided",
+              "deferred"
+            ]
+          },
+          "decision": {
+            "type": "string",
+            "description": "If decided, what was the decision and authority"
+          }
+        }
+      },
+      "description": "Strategic ambiguities that need human decision (Phase 7, §7)"
+    },
+    "source_evidence": {
+      "type": "object",
+      "properties": {
+        "issue_text": {
+          "type": "string",
+          "description": "Original GitHub issue URL or text"
+        },
+        "critic_findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "critic_role": {
+                "type": "string"
+              },
+              "finding_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "description": "Which critic findings informed this intent"
+        },
+        "certified_knowledge": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "References to approved ADRs, contracts, glossary"
+        }
+      },
+      "description": "Evidence trail: where each part came from"
+    },
+    "compiled_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this intent was compiled (after critic synthesis)"
+    }
+  },
+  "examples": [
+    {
+      "intent_id": "intent-abc123def456g",
+      "project_id": "investisor",
+      "run_id": "RUN-20261003",
+      "issue_number": 42,
+      "title": "Add ROI calculator widget to portfolio dashboard",
+      "actors": [
+        {
+          "actor_type": "user",
+          "description": "Authenticated investor viewing portfolio",
+          "permissions": [
+            "portfolio:read",
+            "data:view_own"
+          ]
+        },
+        {
+          "actor_type": "system",
+          "description": "Portfolio service",
+          "permissions": [
+            "portfolio:calculate",
+            "data:aggregate"
+          ]
+        }
+      ],
+      "permissions": {
+        "required": [
+          "portfolio:read",
+          "data:view_own"
+        ],
+        "denied": [
+          "data:view_other_users",
+          "portfolio:delete"
+        ]
+      },
+      "acceptance_criteria": [
+        {
+          "criterion_id": "AC-1",
+          "observable_behavior": "User clicks 'Calculate ROI' button and sees result within 2 seconds",
+          "verification_method": "smoke_test",
+          "preconditions": [
+            "User is authenticated",
+            "User has holdings in portfolio"
+          ],
+          "postconditions": [
+            "ROI percentage displayed",
+            "Calculation time logged"
+          ]
+        }
+      ],
+      "non_goals": [
+        "Modify tax reporting",
+        "Support cryptocurrency portfolios (scope creep)"
+      ],
+      "constraints": [
+        "ROI calculation must use linear formula (per ADR-005)",
+        "API response < 2s SLA"
+      ],
+      "data_behavior": {
+        "inputs": [
+          {
+            "name": "portfolio_id",
+            "type": "uuid",
+            "validation": "must exist in DB"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "roi_percentage",
+            "type": "decimal"
+          }
+        ],
+        "data_retention": "Calculate on-demand, do not persist",
+        "encryption": "Encrypted in transit (HTTPS)"
+      },
+      "strategic_ambiguities": [],
+      "source_evidence": {
+        "issue_text": "https://github.com/mtourk/investisor/issues/42",
+        "critic_findings": [
+          {
+            "critic_role": "domain_critic",
+            "finding_ids": [
+              "finding-domain-001"
+            ]
+          }
+        ],
+        "certified_knowledge": [
+          "ADR-005: Linear ROI formula approved"
+        ]
+      },
+      "compiled_at": "2026-10-03T17:00:00Z"
+    }
+  ]
+}
