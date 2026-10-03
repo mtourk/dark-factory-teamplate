@@ -15,6 +15,14 @@ export interface GeminiTokenResponse {
 
 export class GeminiIntegration {
   private apiKey: string;
+  private readonly DEFAULT_MODEL = "gemini-2.5-flash-native-audio-preview-09-2025";
+  private readonly FALLBACK_MODELS = [
+    "gemini-3.5-flash",
+    "gemini-3-flash",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.0-flash",
+  ];
 
   constructor(apiKey: string) {
     if (!apiKey) {
@@ -71,12 +79,90 @@ export class GeminiIntegration {
       return {
         token,
         expires_at: expiresAt.toISOString(),
-        model: "gemini-2.0-flash-exp", // or latest available
+        model: this.DEFAULT_MODEL,
       };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to mint Gemini token: ${errorMsg}`);
     }
+  }
+
+  /**
+   * Get a text response from Gemini for a feature discovery conversation.
+   *
+   * Takes the full conversation history and asks Gemini for the next response.
+   * This keeps the conversation contextual and natural.
+   *
+   * Implements retry logic with fallback models for rate limiting and service errors.
+   */
+  async getDiscoveryResponse(messages: Array<{ role: string; text: string }>): Promise<string> {
+    // Format messages for Gemini API (convert "user"/"ai" to "user"/"model")
+    const formattedMessages = messages.map((msg) => ({
+      role: msg.role === "user" ? "user" : "model",
+      parts: [{ text: msg.text }],
+    }));
+
+    const modelsToTry = [this.DEFAULT_MODEL, ...this.FALLBACK_MODELS];
+    let lastError: Error | null = null;
+
+    for (const model of modelsToTry) {
+      try {
+        const endpoint = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent`;
+
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": this.apiKey,
+          },
+          body: JSON.stringify({
+            system_instruction: {
+              parts: [
+                {
+                  text: GeminiIntegration.getDiscoverySystemPrompt(),
+                },
+              ],
+            },
+            contents: formattedMessages,
+            generation_config: {
+              temperature: 0.7,
+              max_output_tokens: 1500,
+            },
+          }),
+        });
+
+        // Retry on rate limit or service unavailable
+        if (response.status === 429 || response.status === 503) {
+          const error = await response.text();
+          console.warn(`Model ${model} returned ${response.status}, trying next fallback...`);
+          lastError = new Error(`${response.status}: ${error}`);
+          continue; // Try next model
+        }
+
+        if (!response.ok) {
+          const error = await response.text();
+          throw new Error(`Gemini API error: ${response.status} ${error}`);
+        }
+
+        const data = (await response.json()) as any;
+
+        if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
+          throw new Error("No response text from Gemini API");
+        }
+
+        return data.candidates[0].content.parts[0].text;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        // Continue to next model
+        if (model !== modelsToTry[modelsToTry.length - 1]) {
+          console.warn(`Model ${model} failed, trying next fallback...`);
+        }
+      }
+    }
+
+    // All models failed
+    const errorMsg = lastError?.message || "All Gemini models failed";
+    throw new Error(`Failed to get Gemini response: ${errorMsg}`);
   }
 
   /**

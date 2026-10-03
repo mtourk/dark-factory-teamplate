@@ -8,6 +8,7 @@
  * - POST /conversations - start a new discovery session
  * - GET /conversations/:id - fetch a conversation and its history
  * - POST /conversations/:id/messages - add a user message
+ * - POST /conversations/:id/text-response - get AI response for text message
  * - POST /conversations/:id/gemini-token - mint ephemeral Gemini Live token
  * - POST /conversations/:id/file-issue - file the discovered issue
  * - POST /projects - create a new project repository
@@ -21,7 +22,7 @@
  * Database (D1):
  * - conversations, messages, pending_profiles tables
  *
- * CORS: enabled for frontend (https://intake.ollama.mtourk.com)
+ * CORS: enabled for frontend (https://9404a979.dark-factory-intake.pages.dev)
  */
 
 import IntakeDB from "./db";
@@ -37,7 +38,7 @@ export interface Env {
 }
 
 const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "https://intake.ollama.mtourk.com",
+  "Access-Control-Allow-Origin": "https://factory.mtourk.com",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
   "Content-Type": "application/json",
@@ -90,6 +91,11 @@ export default {
       const syncMatch = path.match(/^\/pending-profiles\/([^/]+)\/sync-confirmed$/);
       if (syncMatch && method === "POST") {
         return await handleMarkProfileSynced(env, syncMatch[1]);
+      }
+
+      const responseMatch = path.match(/^\/conversations\/([^/]+)\/text-response$/);
+      if (responseMatch && method === "POST") {
+        return await handleTextResponse(env, responseMatch[1], request);
       }
 
       return notFound();
@@ -188,26 +194,32 @@ async function handleFileIssue(
 
   const github = new GitHubIntegration(env.GITHUB_REPO_CREATE_TOKEN, owner);
 
-  // Ensure labels exist
-  await github.ensureLabelsExist(repo);
+  try {
+    // Ensure labels exist
+    await github.ensureLabelsExist(repo);
 
-  // File the issue
-  const issue = await github.fileFeatureIssue(repo, body.title, {
-    description: body.description,
-    acceptanceCriteria: body.acceptance_criteria,
-    nonGoals: body.non_goals,
-    constraints: body.constraints,
-  });
+    // File the issue
+    const issue = await github.fileFeatureIssue(repo, body.title, {
+      description: body.description,
+      acceptanceCriteria: body.acceptance_criteria,
+      nonGoals: body.non_goals,
+      constraints: body.constraints,
+    });
 
-  // Update conversation to filed status
-  const updated = await db.fileConversation(
-    conversationId,
-    body.repo_url,
-    issue.number,
-    issue.html_url
-  );
+    // Update conversation to filed status
+    const updated = await db.fileConversation(
+      conversationId,
+      body.repo_url,
+      issue.number,
+      issue.html_url
+    );
 
-  return json({ conversation: updated, issue });
+    return json({ conversation: updated, issue });
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error("File issue error:", errorMsg, error);
+    return json({ error: `Failed to file issue: ${errorMsg}` }, 500);
+  }
 }
 
 async function handleCreateProject(env: Env, request: Request): Promise<Response> {
@@ -247,6 +259,46 @@ async function handleMarkProfileSynced(env: Env, profileId: string): Promise<Res
   const db = new IntakeDB(env.DB);
   const profile = await db.markProfileSynced(profileId);
   return json({ profile });
+}
+
+async function handleTextResponse(
+  env: Env,
+  conversationId: string,
+  request: Request
+): Promise<Response> {
+  const db = new IntakeDB(env.DB);
+  const body = await request.json() as any;
+
+  if (!body.text) {
+    return json({ error: "Message text required" }, 400);
+  }
+
+  // Verify conversation exists
+  const conversation = await db.getConversation(conversationId);
+  if (!conversation) {
+    return json({ error: "Conversation not found" }, 404);
+  }
+
+  // Debug: check if secrets exist
+  const hasGeminiKey = !!env.GEMINI_API_KEY;
+  if (!hasGeminiKey) {
+    console.error("GEMINI_API_KEY is missing from env:", Object.keys(env));
+    return json({ error: "GEMINI_API_KEY secret not configured", debug: { keys: Object.keys(env) } }, 500);
+  }
+
+  // Get full conversation history
+  const messages = await db.getMessages(conversationId);
+
+  // Add the user's message to the history
+  const allMessages = [...messages, { role: "user", text: body.text }];
+
+  // Get Gemini response
+  const gemini = new GeminiIntegration(env.GEMINI_API_KEY);
+  const responseText = await gemini.getDiscoveryResponse(
+    allMessages.map((m) => ({ role: m.role, text: m.text }))
+  );
+
+  return json({ response: responseText });
 }
 
 // ============ Utilities ============

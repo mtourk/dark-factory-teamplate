@@ -17,7 +17,7 @@ the correct way to set routing is the **tunnel configuration** endpoint, which s
 ```bash
 TUNNEL_ID="9bdef772-9e7c-495b-a295-6f542c35a1e9"
 ACCOUNT_ID="a8e55d73ca21465429eca525015fae88"
-TOKEN="cfat_ZJSdt4K6N4AzSv8Xa6K1rI2I3192GITOb9m06r1J123e5a70"
+TOKEN="<REDACTED-ROTATE-THIS-TOKEN>"
 HOSTNAME="factory-ollama-6393.174d2c93ae6f1a6de076789dd62be162.cloudflareaccess.com"
 
 echo "Setting tunnel configuration..."
@@ -46,7 +46,7 @@ echo "=== Done - look for \"success\":true above ==="
 ```powershell
 $tunnelId = "9bdef772-9e7c-495b-a295-6f542c35a1e9"
 $accountId = "a8e55d73ca21465429eca525015fae88"
-$token = "cfat_ZJSdt4K6N4AzSv8Xa6K1rI2I3192GITOb9m06r1J123e5a70"
+$token = "<REDACTED-ROTATE-THIS-TOKEN>"
 $hostname = "factory-ollama-6393.174d2c93ae6f1a6de076789dd62be162.cloudflareaccess.com"
 
 $body = @{
@@ -86,7 +86,7 @@ Write-Host $result.Content
 ```bash
 TUNNEL_ID="9bdef772-9e7c-495b-a295-6f542c35a1e9"
 ACCOUNT_ID="a8e55d73ca21465429eca525015fae88"
-TOKEN="cfat_ZJSdt4K6N4AzSv8Xa6K1rI2I3192GITOb9m06r1J123e5a70"
+TOKEN="<REDACTED-ROTATE-THIS-TOKEN>"
 
 echo "=== Current Tunnel Configuration ==="
 curl -s "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel/$TUNNEL_ID/configurations" \
@@ -97,7 +97,7 @@ curl -s "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel/$T
 ```powershell
 $tunnelId = "9bdef772-9e7c-495b-a295-6f542c35a1e9"
 $accountId = "a8e55d73ca21465429eca525015fae88"
-$token = "cfat_ZJSdt4K6N4AzSv8Xa6K1rI2I3192GITOb9m06r1J123e5a70"
+$token = "<REDACTED-ROTATE-THIS-TOKEN>"
 
 $headers = @{ "Authorization" = "Bearer $token" }
 

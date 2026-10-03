@@ -329,6 +329,12 @@ body {
   font-size: 14px;
   background: var(--color-bg);
   color: var(--color-text);
+  min-width: 0;
+  min-height: 44px;
+  max-height: 120px;
+  resize: vertical;
+  font-family: inherit;
+  overflow: auto;
 }
 
 .text-input:focus {
@@ -571,6 +577,45 @@ details[open] .toggle-icon {
 .modal-content .btn-primary {
   width: 100%;
   margin-top: var(--spacing-md);
+}
+
+/* Repo Selection Modal */
+
+.repo-option {
+  margin-bottom: var(--spacing-lg);
+  padding: var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.repo-option label {
+  display: block;
+  margin-bottom: var(--spacing-sm);
+  font-weight: 600;
+}
+
+.repo-input {
+  width: 100%;
+  padding: var(--spacing-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  font-size: 14px;
+  margin-bottom: var(--spacing-sm);
+  box-sizing: border-box;
+}
+
+.repo-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.1);
+}
+
+.repo-divider {
+  text-align: center;
+  margin: var(--spacing-md) 0;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+}
 }
 
 /* Mobile Responsiveness */

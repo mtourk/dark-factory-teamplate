@@ -10,7 +10,7 @@
  * - Local storage persistence
  */
 
-const WORKER_URL = "https://intake.ollama.mtourk.com";
+const WORKER_URL = "https://dark-factory-intake.mohammad-tourk.workers.dev";
 const STORAGE_KEY_SESSION = "dfactory_session_id";
 const STORAGE_KEY_DRAFT = "dfactory_draft";
 
@@ -33,6 +33,7 @@ let state = {
   repoUrl: "",
   issueUrl: "",
   issueNumber: null,
+  selectedRepoUrl: null, // Repo URL to use for filing
 };
 
 // ============ DOM Elements ============
@@ -55,6 +56,23 @@ const elements = {
   issueNonGoals: document.getElementById("issue-non-goals"),
   issueConstraints: document.getElementById("issue-constraints"),
   editIssueBtn: document.getElementById("edit-issue-btn"),
+  fileIssueBtn: document.getElementById("file-issue-btn"),
+  saveDraftBtn: document.getElementById("save-draft-btn"),
+  successMessage: document.getElementById("success-message"),
+  issueLink: document.getElementById("issue-link"),
+  newIntakeBtn: document.getElementById("new-intake-btn"),
+  helpBtn: document.getElementById("help-btn"),
+  helpModal: document.getElementById("help-modal"),
+  helpCloseBtn: document.getElementById("help-close-btn"),
+  closeBtn: document.getElementById("close-btn"),
+  // Repo modal elements
+  repoModal: document.getElementById("repo-modal"),
+  existingRepoUrl: document.getElementById("existing-repo-url"),
+  useExistingBtn: document.getElementById("use-existing-btn"),
+  newRepoName: document.getElementById("new-repo-name"),
+  createRepoBtn: document.getElementById("create-repo-btn"),
+  repoModalCloseBtn: document.getElementById("repo-modal-close-btn"),
+};
   fileIssueBtn: document.getElementById("file-issue-btn"),
   saveDraftBtn: document.getElementById("save-draft-btn"),
   successMessage: document.getElementById("success-message"),
@@ -90,6 +108,49 @@ async function init() {
   elements.editIssueBtn.addEventListener("click", editIssue);
   elements.saveDraftBtn.addEventListener("click", saveDraft);
   elements.newIntakeBtn.addEventListener("click", resetIntake);
+
+  // Repo modal listeners
+  elements.useExistingBtn.addEventListener("click", async () => {
+    const url = elements.existingRepoUrl.value.trim();
+    if (!url) {
+      alert("Please enter a repository URL");
+      return;
+    }
+    state.selectedRepoUrl = url;
+    elements.repoModal.classList.add("hidden");
+    await fileIssueToRepo();
+  });
+
+  elements.createRepoBtn.addEventListener("click", async () => {
+    const name = elements.newRepoName.value.trim();
+    if (!name) {
+      alert("Please enter a repository name");
+      return;
+    }
+    elements.createRepoBtn.textContent = "Creating...";
+    elements.createRepoBtn.disabled = true;
+    try {
+      const response = await fetch(`${WORKER_URL}/projects`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (!response.ok) throw new Error("Failed to create repo");
+      const data = await response.json();
+      state.selectedRepoUrl = data.repo.html_url;
+      elements.repoModal.classList.add("hidden");
+      await fileIssueToRepo();
+    } catch (error) {
+      alert(`Error creating repo: ${error.message}`);
+    } finally {
+      elements.createRepoBtn.textContent = "Create New Repo";
+      elements.createRepoBtn.disabled = false;
+    }
+  });
+
+  elements.repoModalCloseBtn.addEventListener("click", () => {
+    elements.repoModal.classList.add("hidden");
+  });
 
   elements.helpBtn.addEventListener("click", () =>
     elements.helpModal.classList.remove("hidden")
@@ -242,10 +303,37 @@ async function sendTextMessage() {
   await addMessage("user", text);
   elements.textInput.value = "";
 
-  // Simulate AI response (in production, this would call Gemini API)
-  setTimeout(() => {
-    addMessage("ai", "Thanks for that input. Can you tell me more about the constraints?");
-  }, 500);
+  // Get AI response from Worker
+  elements.sendBtn.disabled = true;
+  elements.sendBtn.textContent = "Thinking...";
+
+  try {
+    const response = await fetch(
+      `${WORKER_URL}/conversations/${state.conversationId}/text-response`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || `Server error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    await addMessage("ai", data.response);
+  } catch (error) {
+    console.error("Error getting AI response:", error);
+    const errorMsg = error.message.includes("429") || error.message.includes("503")
+      ? "The AI service is experiencing high demand. Please wait a moment and try again."
+      : "Sorry, I had trouble generating a response. Please try again.";
+    await addMessage("ai", errorMsg);
+  } finally {
+    elements.sendBtn.disabled = false;
+    elements.sendBtn.textContent = "Send";
+  }
 }
 
 // ============ Message Handling ============
@@ -378,8 +466,18 @@ async function fileIssue() {
     return;
   }
 
-  // TODO: select repo (or default to first project)
-  const repoUrl = "https://github.com/mtourk/test-project"; // Placeholder
+  // Clear previous selection and show repo modal
+  state.selectedRepoUrl = null;
+  elements.existingRepoUrl.value = "";
+  elements.newRepoName.value = "";
+  elements.repoModal.classList.remove("hidden");
+}
+
+async function fileIssueToRepo() {
+  if (!state.selectedRepoUrl) {
+    alert("No repository selected.");
+    return;
+  }
 
   elements.fileIssueBtn.textContent = "Filing...";
   elements.fileIssueBtn.disabled = true;
@@ -389,7 +487,7 @@ async function fileIssue() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        repo_url: repoUrl,
+        repo_url: state.selectedRepoUrl,
         title: elements.issueTitle.value,
         description: elements.issueDescription.value,
         acceptance_criteria: elements.issueAcceptance.value

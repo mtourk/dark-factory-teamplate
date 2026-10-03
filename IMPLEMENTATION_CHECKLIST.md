@@ -671,4 +671,55 @@
 
 ---
 
-*Last updated: 2026-10-03 during Phase 1 startup*
+## Phase 18: Autonomous Intake-to-Deploy Pipeline (extension, post-Phase-17)
+
+**Added:** 2026-10-04, by explicit user request. Design-only until the user approves implementation; see ADR-007 for the full decision record (queue schema, local build loop, new-app deploy credential, secret-sharing model, tracking-issue design).
+
+**Why:** Phase 17.0 files a well-formed Issue but nothing consumes it. This phase is what makes "the factory starts working once an issue is submitted" literally true — it is also the phase that finally gives Phase 4's `BacklogScheduler` and the implementation `ImplementationOrchestrator` a real execution context, scoped to issues arriving through web intake.
+
+### Deliverables
+
+- [ ] **Phase 18.0 — Queue schema + Worker API**
+  - Apply `factory/intake/worker/schema_phase18.sql` (`build_queue` table) to the live D1 database
+  - `POST /conversations/:id/file-issue` also inserts a `build_queue` row (status `queued`)
+  - New routes: `GET /build-queue` (list, for the runner and for display), `POST /build-queue/:id/claim` (conditional, single-flight — see ADR-007), `POST /build-queue/:id/progress`, `GET /build-queue/:id` (polled by the web UI)
+- [ ] **Phase 18.1 — Local queue runner** (`factory/intake/queue_runner.py`, new)
+  - Polls `GET /build-queue?status=queued`, claims the oldest row, processes exactly one job at a time end to end before claiming the next
+  - Resolves/creates the profile via the existing `LocalProfileSync` (`factory/intake/local_sync.py`) — its first real caller
+  - Drives the existing `ImplementationOrchestrator` (`factory/implementation/orchestrator.py`) and `BacklogScheduler` (`factory/backlog/scheduler.py`) through implementation/test/review
+  - Reports step-by-step progress via `POST /build-queue/:id/progress` after every phase transition
+  - Resolves `factory/cli.py`'s `run`/`queue`/`pause`/`resume` placeholders (currently "not yet implemented (Phase 4 backlog scheduler)")
+- [ ] **Phase 18.2 — New-app deploy automation**
+  - On `needs_new_app = true`: `wrangler deploy` using the operator's own already-authenticated local CLI session (no new secret stored or minted — ADR-007 §3)
+  - Attach a Cloudflare Custom Domain at `<project-slug>.mtourk.com` (auto-provisions its own DNS record on the existing `mtourk.com` zone — no manual DNS step)
+  - Report the final live URL via the progress endpoint on `done`
+  - New app's Worker receives no copy of `GEMINI_API_KEY`/`GITHUB_REPO_CREATE_TOKEN`; capability is shared by calling back into the central Intake Worker, never by copying secrets (ADR-007 §4)
+- [ ] **Phase 18.3 — Existing-repo edit/deploy flag**
+  - Repo-selection modal gains an "Also deploy after this change" checkbox (default off) for the existing-repo path
+  - When checked, deploy runs against that repo's existing Worker (via its `profiles/<name>.yml`), not a new subdomain
+- [ ] **Phase 18.4 — Dark Factory tracking issue**
+  - Filing an issue on a target repo also files a lightweight, non-claimable tracking issue on `dark-factory-teamplate` itself, cross-linked by URL, closed automatically when the `build_queue` row reaches `done`/`failed` (ADR-007 §5 — does not reopen ADR-002/004)
+- [ ] **Phase 18.5 — Progress UI + mid-flight amendments**
+  - Web app's success screen replaced by a status screen polling `GET /build-queue/:id`: current step, done/remaining steps, final URL or PR link once `done`
+  - An **"Add Detail"** panel visible while the job is in-flight (`claimed`–`deploying`) lets the user append clarifications/acceptance criteria/constraints without interrupting the current job
+  - New Worker endpoint: `POST /build-queue/:id/append-detail` receives the text, appends it as a GitHub comment on the issue, records it in `build_queue_updates` for audit
+  - Queue runner reads the full GitHub issue (body + fresh comments) at the start of each phase transition, so user amendments automatically flow into the next critic/builder run without requiring a restart or priority bump
+- [ ] Tests: single-flight claim correctness (two concurrent claim attempts on one row), queue runner failure path (leaves profile/branch intact, reports `failed`, does not auto-retry), secret-leak guard extended to confirm the new app's Worker never receives `GEMINI_API_KEY`/`GITHUB_REPO_CREATE_TOKEN`, mid-flight amendments are captured + posted as GitHub comments + flow into the runner's next phase transition
+
+### Secondary Checks
+
+- [ ] Editing an existing repo never uses the ambient-CLI deploy path's credential model exception — it continues through that repo's own GitHub Actions secrets per ADR-003/004, unchanged
+- [ ] Only one `build_queue` row is ever in a non-terminal state at a time (enforced at the DB level, not just by runner convention)
+- [ ] `dark-factory-teamplate`'s own tracking issues are never claimed by the queue runner (ADR-002/004 boundary holds)
+
+### Gate
+
+- [ ] Filing an issue (new repo, "needs new app") results, with zero further manual steps, in a live `https://<slug>.mtourk.com` URL reported back through the progress endpoint
+- [ ] Filing an issue against an existing repo with "also deploy" unchecked results in a PR, not a deploy
+- [ ] A second issue filed while the first is still processing is visibly `queued`, not started, and begins only after the first reaches `done`/`failed`
+- [ ] The web UI shows current step + done/remaining steps for an in-flight job, polling only — no new inbound exposure for the local machine
+- [ ] Commit: "Phase 18.0: Build queue + local queue runner — autonomous intake-to-deploy pipeline"
+
+---
+
+*Last updated: 2026-10-04 — added Phase 18 (ADR-007)*

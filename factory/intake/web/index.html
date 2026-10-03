@@ -46,12 +46,12 @@
               <span id="recording-text">Recording...</span>
             </div>
             <div id="text-input-area" class="text-input-area hidden">
-              <input
+              <textarea
                 id="text-input"
-                type="text"
                 placeholder="Type your response..."
                 class="text-input"
-              />
+                rows="2"
+              ></textarea>
               <button id="send-btn" class="btn-send">Send →</button>
             </div>
           </div>
@@ -109,6 +109,40 @@
       <footer class="footer">
         <p class="footer-text">Dark Factory Phase 17.0 — Intake & Discovery</p>
       </footer>
+    </div>
+
+    <!-- Repo Selection Modal -->
+    <div id="repo-modal" class="modal hidden">
+      <div class="modal-content">
+        <h2>Select or Create Repository</h2>
+        <p>Where should this issue be filed?</p>
+
+        <div class="repo-option">
+          <label>Existing Repository URL</label>
+          <input
+            id="existing-repo-url"
+            type="text"
+            placeholder="https://github.com/owner/repo-name"
+            class="repo-input"
+          />
+          <button id="use-existing-btn" class="btn-primary">Use This Repo</button>
+        </div>
+
+        <div class="repo-divider">or</div>
+
+        <div class="repo-option">
+          <label>Create New Repository</label>
+          <input
+            id="new-repo-name"
+            type="text"
+            placeholder="e.g., expense-tracker"
+            class="repo-input"
+          />
+          <button id="create-repo-btn" class="btn-secondary">Create New Repo</button>
+        </div>
+
+        <button id="repo-modal-close-btn" class="btn-secondary" style="margin-top: 20px; width: 100%;">Cancel</button>
+      </div>
     </div>
 
     <!-- Help Modal -->
