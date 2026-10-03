@@ -1,0 +1,107 @@
+# Dark Factory deployment workflow template (master plan §15).
+#
+# This file is a TEMPLATE owned by the factory repository. The factory's
+# GitHub integration tooling synchronizes it into each managed target
+# repository (e.g. mtourk/investisor) at `.github/workflows/deploy.yml`.
+# It is never executed from inside the factory repository itself.
+#
+# Security invariant (§15): "GitHub Actions owns Cloudflare secrets. Models
+# and local processes may not read them." CLOUDFLARE_API_TOKEN and
+# CLOUDFLARE_ACCOUNT_ID exist ONLY as encrypted repository secrets on the
+# target repository, injected by GitHub Actions at run time. They are never
+# read by the factory orchestrator, never written to a local file, and
+# never passed as a plain command-line argument (Wrangler reads them
+# directly from the process environment).
+#
+# Flow:
+#   pull_request  -> preview deploy + smoke test (must pass before auto-merge)
+#   push to main  -> production deploy + health/version validation
+
+name: Factory Cloudflare Deploy
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: factory-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy-preview:
+    name: Deploy preview (factory/check-preview)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    environment: preview
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          FACTORY_SHA: ${{ github.event.pull_request.head.sha }}
+
+      - name: Deploy to Cloudflare (preview)
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --branch pr-${{ github.event.pull_request.number }}
+
+      - name: Smoke test preview deployment (factory/check-preview-smoke)
+        run: |
+          python -m factory.deploy.run_health_check \
+            --url "${{ steps.deploy.outputs.deployment-url }}" \
+            --expected-sha "${{ github.event.pull_request.head.sha }}" \
+            --target preview
+
+  deploy-production:
+    name: Deploy production
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          FACTORY_SHA: ${{ github.sha }}
+
+      - name: Deploy to Cloudflare (production)
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
+
+      - name: Verify production health and version
+        id: health
+        run: |
+          python -m factory.deploy.run_health_check \
+            --url "${{ steps.deploy.outputs.deployment-url }}" \
+            --expected-sha "${{ github.sha }}" \
+            --target production
+
+      - name: Pause merges and quarantine on failed validation (§15)
+        if: failure()
+        run: |
+          python -m factory.recovery.quarantine \
+            --sha "${{ github.sha }}" \
+            --reason "production_health_check_failed"
