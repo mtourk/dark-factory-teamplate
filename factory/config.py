@@ -108,6 +108,18 @@ def get_workflow_names() -> list[str]:
     return [f.stem for f in workflows_dir.glob("*.yml")]
 
 
+def load_config() -> Dict[str, Any]:
+    """
+    Load factory-wide runtime configuration (project config).
+
+    Back-compat alias for load_project_config(), used by the CLI (factory/cli.py)
+    for generic diagnostics that are not tied to a specific managed project.
+    See factory/profiles.py for the per-managed-project ("profile") configuration
+    that this factory template reuses across multiple target repositories.
+    """
+    return load_project_config()
+
+
 if __name__ == "__main__":
     # Test config loading
     try:

@@ -440,6 +440,13 @@
   - Wrangler deploy
   - Health check
 - [ ] Tests: mock deploy, health check pass/fail paths
+- [x] `profiles/` directory (§17): per-managed-project configuration
+  - `factory/profiles.py` — Profile, TargetRepository, CloudflareProjectRef,
+    list/load/save/create/resolve_active_profile
+  - Secret-free by construction; secrets live only as GitHub Actions secrets
+    on each profile's target repo (`factory/deploy/target_repo_setup.py`)
+  - CLI: `factory profile create|list|show`, global `--profile` option
+  - Factory is built once and reused unmodified across every future project
 
 ### Secondary Checks
 - [ ] Cloudflare secrets not logged or exposed
@@ -451,6 +458,7 @@
 - [ ] Cloudflare account ID and token stored in repo secrets
 - [ ] Mock deploy to preview succeeds
 - [ ] Production validation harness ready
+- [x] Factory is target-repo-agnostic via `profiles/` — no hardcoded project
 - [ ] Commit: "Phase 13: Cloudflare preview/production deploy"
 
 ---

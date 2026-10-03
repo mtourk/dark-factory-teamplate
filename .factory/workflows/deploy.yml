@@ -1,9 +1,13 @@
-# Dark Factory deployment workflow template (master plan §15).
+# Dark Factory deployment workflow template (master plan §15, §17).
 #
-# This file is a TEMPLATE owned by the factory repository. The factory's
-# GitHub integration tooling synchronizes it into each managed target
-# repository (e.g. mtourk/investisor) at `.github/workflows/deploy.yml`.
-# It is never executed from inside the factory repository itself.
+# This file is a TEMPLATE owned by the factory repository. The factory is a
+# reusable engine: it manages many target repositories over time, one per
+# profile (see factory/profiles.py). For each profile, the factory's GitHub
+# integration tooling (factory/deploy/target_repo_setup.py) synchronizes
+# this template into that profile's target repository at
+# `.github/workflows/deploy.yml`. It is never executed from inside the
+# factory repository itself, and nothing in this file is specific to any
+# one project.
 #
 # Security invariant (§15): "GitHub Actions owns Cloudflare secrets. Models
 # and local processes may not read them." CLOUDFLARE_API_TOKEN and

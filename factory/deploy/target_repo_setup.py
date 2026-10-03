@@ -1,44 +1,44 @@
 """
-Phase 13: Configurable Cloudflare deployment — target-repo-agnostic.
+Target repository setup — syncs the factory's deploy workflow template and
+Cloudflare secrets onto a profile's managed target repository (§15, §17).
 
-Instead of hardcoding a specific target repository, Phase 13 is now:
-1. A reusable Cloudflare adapter (already created in factory/deploy/cloudflare_adapter.py)
-2. A workflow template at .factory/workflows/deploy.yml (already created)
-3. A configuration system (factory/config) that accepts any target repo
-4. Guidance for the user to:
-   - Specify their target repo (via URL or owner/name)
-   - Provide Cloudflare Account ID and API Token
-   - The factory then syncs the workflow template to that repo and
-     configures the GitHub Actions secrets there
+This module is deliberately target-agnostic: it operates on whichever
+Profile (factory/profiles.py) is passed in, never on a hardcoded repo name.
+A single factory installation can run this once per profile, once per
+project, reused indefinitely as new profiles are added.
 
-This module provides the integration layer that takes user-provided
-configuration and deploys/manages secrets on the actual target repository.
+Flow:
+1. A reusable Cloudflare adapter already exists (factory/deploy/cloudflare_adapter.py)
+2. A workflow template already exists (.factory/workflows/deploy.yml)
+3. A profile (factory/profiles.py) names the target repository
+4. This module syncs the workflow template to that repo and provides the
+   user with the exact commands to configure GitHub Actions secrets there
+
+Secrets are never read, stored, or executed by the factory process itself —
+see configure_github_secrets() below.
 """
 
-import subprocess
-import sys
 from pathlib import Path
-from typing import Optional
 
-from factory.config import TargetRepository, FactoryConfig
+from factory.profiles import Profile
 
 
 class TargetRepoSetup:
     """
-    Manages deployment of the factory workflow and secrets to a configured
+    Manages deployment of the factory workflow and secrets to a profile's
     target repository (§15).
 
-    This class is target-agnostic: it takes a TargetRepository config and
-    performs the necessary GitHub API calls / Git operations without ever
-    assuming a specific repo name.
+    Target-agnostic: takes a Profile and performs the necessary GitHub
+    operations without ever assuming a specific repo name. Reusable across
+    every profile the factory manages.
     """
 
-    def __init__(self, config: FactoryConfig):
+    def __init__(self, profile: Profile):
         """
         Args:
-            config: FactoryConfig with target_repo and optional credentials.
+            profile: The Profile naming the target repository to set up.
         """
-        self.config = config
+        self.profile = profile
 
     def sync_workflow_to_target(self, workflow_template_path: Path) -> bool:
         """
@@ -84,7 +84,7 @@ class TargetRepoSetup:
                 "set",
                 "CLOUDFLARE_ACCOUNT_ID",
                 "--repo",
-                self.config.target_repo.repo_string,
+                self.profile.target_repo.repo_string,
                 "--body",
                 account_id,
             ],
@@ -94,7 +94,7 @@ class TargetRepoSetup:
                 "set",
                 "CLOUDFLARE_API_TOKEN",
                 "--repo",
-                self.config.target_repo.repo_string,
+                self.profile.target_repo.repo_string,
                 "--body",
                 api_token,
             ],
@@ -117,10 +117,10 @@ class TargetRepoSetup:
         3. Wait for user confirmation / execution
         """
         print("\n" + "=" * 70)
-        print("FACTORY SETUP: Configure GitHub Actions Secrets")
+        print(f"FACTORY SETUP: Configure GitHub Actions Secrets [profile: {self.profile.name}]")
         print("=" * 70)
-        print(f"\nTarget repository: {self.config.target_repo.repo_string}")
-        print("\nTo complete Phase 13 setup, execute these commands from your terminal:")
+        print(f"\nTarget repository: {self.profile.target_repo.repo_string}")
+        print("\nTo complete setup, execute these commands from your terminal:")
         print("(Never commit these commands or store them; they contain secrets.)\n")
 
         for i, cmd in enumerate(commands, 1):
@@ -133,19 +133,14 @@ class TargetRepoSetup:
         return True
 
 
-def print_phase13_setup_instructions(target_repo_url: str, account_id: str, api_token: str) -> str:
+def print_setup_instructions(profile_name: str, account_id: str, api_token: str) -> None:
     """
-    User-facing instructions for completing Phase 13 setup on a target repo.
+    User-facing instructions for completing Cloudflare secret setup on a
+    profile's target repository. Looks up the profile by name (factory/profiles.py)
+    so this works identically for any managed project.
+    """
+    from factory.profiles import load_profile
 
-    Returns a formatted string the user can follow to set up secrets on their
-    target repository.
-    """
-    target = TargetRepository.from_url(target_repo_url)
-    config = FactoryConfig(
-        target_repo=target,
-        cloudflare_account_id=account_id,
-        cloudflare_api_token=api_token,
-    )
-    setup = TargetRepoSetup(config)
+    profile = load_profile(profile_name)
+    setup = TargetRepoSetup(profile)
     setup.configure_github_secrets(account_id, api_token)
-    return ""
