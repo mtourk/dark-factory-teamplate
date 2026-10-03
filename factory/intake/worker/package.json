@@ -1,0 +1,25 @@
+{
+  "name": "dark-factory-intake",
+  "version": "0.1.0",
+  "description": "Dark Factory Phase 17 intake worker - Cloudflare Worker for feature discovery and GitHub repo creation",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=neutral --target=es2020 --outfile=dist/index.js",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "deploy:prod": "wrangler deploy --env production",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/**/*.ts"
+  },
+  "dependencies": {
+    "wrangler": "^3.26.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240605.0",
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.3",
+    "esbuild": "^0.19.10",
+    "eslint": "^8.55.0"
+  }
+}

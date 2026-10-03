@@ -1,0 +1,55 @@
+name = "dark-factory-intake"
+main = "src/index.ts"
+compatibility_date = "2024-10-15"
+
+[env.production]
+name = "dark-factory-intake"
+routes = [
+  { pattern = "https://intake.ollama.mtourk.com/*", zone_name = "mtourk.com" }
+]
+vars = { ENVIRONMENT = "production" }
+
+[env.development]
+name = "dark-factory-intake-dev"
+routes = [
+  { pattern = "https://intake-dev.ollama.mtourk.com/*", zone_name = "mtourk.com" }
+]
+vars = { ENVIRONMENT = "development" }
+
+[[d1_databases]]
+binding = "DB"
+database_name = "dark-factory-intake"
+database_id = ""
+
+[env.development.d1_databases]
+binding = "DB"
+database_name = "dark-factory-intake-dev"
+database_id = ""
+
+[vars]
+GITHUB_API_BASE = "https://api.github.com"
+
+[env.production.vars]
+GITHUB_ORG = "mtourk"
+
+[env.development.vars]
+GITHUB_ORG = "mtourk"
+
+[[secrets]]
+name = "GITHUB_REPO_CREATE_TOKEN"
+
+[[secrets]]
+name = "GEMINI_API_KEY"
+
+[[r2_buckets]]
+binding = "TRANSCRIPTS"
+bucket_name = "dark-factory-transcripts"
+
+[build]
+command = "npm run build"
+cwd = "."
+watch_paths = ["src/**/*.ts"]
+
+[build.upload]
+format = "modules"
+main = "./dist/index.js"
