@@ -73,16 +73,6 @@ const elements = {
   createRepoBtn: document.getElementById("create-repo-btn"),
   repoModalCloseBtn: document.getElementById("repo-modal-close-btn"),
 };
-  fileIssueBtn: document.getElementById("file-issue-btn"),
-  saveDraftBtn: document.getElementById("save-draft-btn"),
-  successMessage: document.getElementById("success-message"),
-  issueLink: document.getElementById("issue-link"),
-  newIntakeBtn: document.getElementById("new-intake-btn"),
-  helpBtn: document.getElementById("help-btn"),
-  helpModal: document.getElementById("help-modal"),
-  helpCloseBtn: document.getElementById("help-close-btn"),
-  closeBtn: document.getElementById("close-btn"),
-};
 
 // ============ Initialization ============
 
