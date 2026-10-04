@@ -149,19 +149,28 @@ The app has two input modes:
 The Worker code tries `http://localhost:11434/api/chat` first. Since the Worker runs on Cloudflare (cloud), not your machine, you need a tunnel to expose localhost:
 
 ```bash
-# Using Cloudflare tunnel (one-time setup):
-npm install -g @cloudflare/wrangler
-wrangler login
+# STEP 1: Download and install ngrok (one-time)
+# Go to https://ngrok.com/download
+# Download for your OS, extract ngrok to a folder in your PATH
+# Verify: ngrok version
 
-# In a separate terminal, create a tunnel to expose localhost:11434
-cloudflare-workers-localhost --listen localhost:11434 --expose
+# STEP 2: Start Ollama (in one terminal)
+ollama serve
 
-# Or use ngrok (simpler, no account required):
-brew install ngrok  # macOS
+# STEP 3: Start ngrok tunnel (in another terminal)
 ngrok http 11434
+
+# You'll see output like:
+#   Forwarding    https://xxxx-xx-xxx-xxx-xx.ngrok.io -> localhost:11434
+# The tunnel is now active. Keep this terminal open.
+
+# STEP 4: Verify tunnel is working
+# From yet another terminal:
+curl http://localhost:11434/api/tags
+# Should return your Ollama models (not a connection error)
 ```
 
-Once the tunnel is active, the Worker can reach local Ollama and will use it for all text discovery requests. If Ollama is offline, the Worker falls back to Gemini automatically.
+Once the tunnel is active, the Worker can reach local Ollama and will use it for all text discovery requests. If Ollama is offline or the tunnel is down, the Worker falls back to Gemini automatically.
 
 ### Model selection (Ollama)
 
