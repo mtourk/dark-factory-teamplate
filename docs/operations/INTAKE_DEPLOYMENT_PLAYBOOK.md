@@ -134,6 +134,19 @@ The app has two input modes:
 1. **Voice** (`🎤 Describe your feature idea`) — requires Gemini Live's real-time audio streaming. No local LLM alternative.
 2. **Text** (`Type your idea instead`) — just needs a discovery interview. **Prefers local Ollama** (free, fast, no rate limits), **falls back to Gemini** if Ollama unreachable.
 
+### Model selection: task-type differentiation (as of 2026-10-04)
+
+**Discovery phase (text-mode):** uses `qwen2.5:7b-instruct` (lightweight, fast, good conversational quality). Fast enough to respond in 5-10 seconds even on CPU.
+- Configured via `OLLAMA_MODEL` and `OLLAMA_URL` in `factory/intake/worker/wrangler.toml`
+- When an issue is filed, it is automatically tagged with GitHub label `model:discovery-7b` for traceability
+
+**Implementation phase (future, when builder is active):** will use `qwen2.5-coder:32b` (heavier, specialized for code generation).
+- Will read the `model:implementation-32b` label from GitHub issues filed by discovery
+- Requires pulling the 32B model: `ollama pull qwen2.5-coder:32b`
+- See `factory/implementation/builder.py` for the design (not yet implemented as of this writing)
+
+**Rationale:** The 32B model takes ~125s to generate a discovery response on CPU-only Ollama, exceeding Cloudflare's edge timeout and falling back to Gemini every time — a usability regression masked by graceful fallback. The 7B model completes in ~5-10s, making the local option actually usable for interactive discovery. Code generation (implementation) can afford to take longer (asynchronous queue task, not user-facing), so 32B's quality premium is worth the latency there.
+
 ### Why prefer local Ollama for text
 
 - **Zero API cost** — local Ollama is free; Gemini API costs credits/month
@@ -144,7 +157,11 @@ The app has two input modes:
 
 ### Setup: local Ollama with Cloudflare tunnel (ollama.mtourk.com)
 
-**Prerequisite:** Ollama running locally and exposed via a Cloudflare tunnel at `https://ollama.mtourk.com`.
+**Prerequisite:** Ollama running locally with both models pulled:
+```bash
+ollama pull qwen2.5:7b-instruct          # Discovery phase (fast, interactive)
+ollama pull qwen2.5-coder:32b            # Implementation phase (heavy, async)
+```
 
 The Worker code reaches Ollama via the public tunnel URL (not localhost). This means:
 - No ngrok or separate tunnel tool needed

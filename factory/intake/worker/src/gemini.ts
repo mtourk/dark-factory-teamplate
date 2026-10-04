@@ -20,8 +20,8 @@ export interface GeminiTokenResponse {
 
 export class GeminiIntegration {
   private apiKey: string;
-  private readonly OLLAMA_URL = "https://ollama.mtourk.com"; // Ollama exposed via Cloudflare tunnel
-  private readonly OLLAMA_MODEL = "qwen2.5-coder:32b"; // Actual model installed on the Ollama server (verified via /api/tags)
+  private ollamaUrl: string;
+  private ollamaModel: string;
 
   // Gemini as fallback for text, primary for voice
   private readonly DEFAULT_MODEL = "gemini-3.5-flash";
@@ -32,11 +32,14 @@ export class GeminiIntegration {
     "gemini-2.5-flash",
   ];
 
-  constructor(apiKey: string) {
+  constructor(apiKey: string, ollamaUrl?: string, ollamaModel?: string) {
     if (!apiKey) {
       throw new Error("GEMINI_API_KEY secret not configured");
     }
     this.apiKey = apiKey;
+    // Allow configuration via env, or fall back to defaults
+    this.ollamaUrl = ollamaUrl || "https://ollama.mtourk.com";
+    this.ollamaModel = ollamaModel || "qwen2.5:7b-instruct";
   }
 
   /**
@@ -123,6 +126,10 @@ export class GeminiIntegration {
    * Call local Ollama server for discovery responses.
    * Ollama is accessible via a pre-existing Cloudflare tunnel (ollama.mtourk.com).
    *
+   * Task-type model selection (via env vars from wrangler.toml):
+   * - Discovery phase (this method): uses qwen2.5:7b-instruct (fast, good conversational quality)
+   * - Implementation phase (future): will use qwen2.5-coder:32b (from GitHub issue label)
+   *
    * Every call is logged to the ollama_requests table (pending -> success/error) so the
    * monitoring dashboard (monitor.mtourk.com, Phase 18+) has live status + full history.
    * Logging is best-effort: if `db` isn't provided, or a log write itself fails, the
@@ -145,7 +152,7 @@ export class GeminiIntegration {
 
     if (db) {
       try {
-        const record = await db.createOllamaRequest(conversationId || null, this.OLLAMA_MODEL, promptText);
+        const record = await db.createOllamaRequest(conversationId || null, this.ollamaModel, promptText);
         requestId = record.id;
       } catch (logError) {
         console.warn(`Failed to log Ollama request start: ${logError instanceof Error ? logError.message : String(logError)}`);
@@ -153,20 +160,18 @@ export class GeminiIntegration {
     }
 
     try {
-      const response = await fetch(`${this.OLLAMA_URL}/api/chat`, {
+      const response = await fetch(`${this.ollamaUrl}/api/chat`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: this.OLLAMA_MODEL,
+          model: this.ollamaModel,
           messages: ollamaMessages,
           system: GeminiIntegration.getDiscoverySystemPrompt(),
           stream: false,
-          // Keep the (32B) model loaded in memory for 30 min after this call so later
-          // messages in the same conversation don't pay the ~70-85s cold-load penalty
-          // again — a cold load pushed past Cloudflare's ~100s edge timeout and caused
-          // a 524 in production on 2026-10-04 (caught by the /ollama/status dashboard).
+          // Keep the model loaded in memory for 30 min after this call so later
+          // messages in the same conversation don't pay the cold-load penalty again.
           keep_alive: "30m",
         }),
       });
@@ -200,7 +205,7 @@ export class GeminiIntegration {
         }
       }
 
-      throw new Error(`Local Ollama unavailable (${this.OLLAMA_URL}): ${errorMsg}`);
+      throw new Error(`Local Ollama unavailable (${this.ollamaUrl}): ${errorMsg}`);
     }
   }
 

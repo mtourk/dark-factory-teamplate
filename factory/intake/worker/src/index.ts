@@ -172,7 +172,7 @@ async function handleMintGeminiToken(env: Env, conversationId: string): Promise<
     return json({ error: "Conversation not found" }, 404);
   }
 
-  const gemini = new GeminiIntegration(env.GEMINI_API_KEY);
+  const gemini = new GeminiIntegration(env.GEMINI_API_KEY, env.OLLAMA_URL, env.OLLAMA_MODEL);
   const tokenResponse = await gemini.createEphemeralToken();
 
   return json(tokenResponse);
@@ -306,7 +306,7 @@ async function handleTextResponse(
 
   // Get Gemini response (prefers local Ollama; db + conversationId let it log to ollama_requests
   // for the monitoring dashboard — see handleOllamaStatus/handleOllamaHistory below)
-  const gemini = new GeminiIntegration(env.GEMINI_API_KEY);
+  const gemini = new GeminiIntegration(env.GEMINI_API_KEY, env.OLLAMA_URL, env.OLLAMA_MODEL);
   const responseText = await gemini.getDiscoveryResponse(
     allMessages.map((m) => ({ role: m.role, text: m.text })),
     db,

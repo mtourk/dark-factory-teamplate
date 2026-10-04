@@ -138,7 +138,9 @@ export class GitHubIntegration {
     const payload = {
       title,
       body,
-      labels: ["factory:ready"],
+      // Labels: factory:ready marks as eligible for implementation,
+      // model:discovery-7b indicates this was discovered via 7B model (for traceability)
+      labels: ["factory:ready", "model:discovery-7b"],
     };
 
     try {

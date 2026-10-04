@@ -6,8 +6,10 @@ compatibility_date = "2024-10-15"
 GITHUB_API_BASE = "https://api.github.com"
 ENVIRONMENT = "production"
 GITHUB_ORG = "mtourk"
-VERSION = "3"
-DEPLOYED_AT = "2026-10-04T00:15:40Z"
+VERSION = "4"
+DEPLOYED_AT = "2026-10-04T20:35:00+02:00"
+OLLAMA_MODEL = "qwen2.5:7b-instruct"
+OLLAMA_URL = "https://ollama.mtourk.com"
 
 [[d1_databases]]
 binding = "DB"

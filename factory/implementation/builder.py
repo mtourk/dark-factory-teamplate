@@ -8,6 +8,17 @@ and attempt number.
 The builder may not delete/weaken/skip/exclude failing tests, modify
 sealed tests, or replace final integration behavior with mocks merely
 to pass."
+
+Task-type model selection (as of 2026-10-04):
+- Discovery phase (intake Worker, gemini.ts): uses qwen2.5:7b-instruct (fast, good conversational quality)
+- Implementation phase (this file, future): will read GitHub issue's `model:implementation-32b` label
+  and pass `model_name` to the gateway for code generation (not yet implemented)
+- The label is auto-added by factory/intake/worker/src/github.ts when filing an issue
+- Implementation should:
+  1. Load the GitHub issue (repo/issue_number)
+  2. Read its labels
+  3. Extract `model:*` label (e.g., "model:implementation-32b")
+  4. Pass model name to builder's LLM calls when Aider integration is built
 """
 
 import hashlib
