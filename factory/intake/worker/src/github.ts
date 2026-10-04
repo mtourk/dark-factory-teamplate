@@ -28,6 +28,11 @@ export class GitHubIntegration {
   private token: string;
   private apiBase = "https://api.github.com";
   private owner: string;
+  // GitHub's REST API hard-requires a User-Agent header and returns a 403
+  // ("Request forbidden by administrative rules") without one — confirmed in
+  // production via `wrangler tail` on 2026-10-04 (every fileFeatureIssue call
+  // was silently failing after a successful discovery conversation).
+  private static readonly USER_AGENT = "dark-factory-intake-worker";
 
   constructor(token: string, owner: string) {
     if (!token) {
@@ -77,6 +82,7 @@ export class GitHubIntegration {
           Authorization: `Bearer ${this.token}`,
           "X-GitHub-Api-Version": "2022-11-28",
           "Content-Type": "application/json",
+          "User-Agent": GitHubIntegration.USER_AGENT,
         },
         body: JSON.stringify(payload),
       });
@@ -143,6 +149,7 @@ export class GitHubIntegration {
           Authorization: `Bearer ${this.token}`,
           "X-GitHub-Api-Version": "2022-11-28",
           "Content-Type": "application/json",
+          "User-Agent": GitHubIntegration.USER_AGENT,
         },
         body: JSON.stringify(payload),
       });
@@ -198,6 +205,7 @@ export class GitHubIntegration {
             Authorization: `Bearer ${this.token}`,
             "X-GitHub-Api-Version": "2022-11-28",
             "Content-Type": "application/json",
+            "User-Agent": GitHubIntegration.USER_AGENT,
           },
           body: JSON.stringify({
             name: label.name,
