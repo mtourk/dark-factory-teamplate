@@ -119,6 +119,34 @@ class GitHubAdapter:
 
         return issues
 
+    def get_issue(self, issue_number: int) -> GitHubIssue:
+        """
+        Fetch a single issue by number.
+
+        Args:
+            issue_number: GitHub issue number
+
+        Returns:
+            Parsed issue (title, body, labels, state)
+
+        Raises:
+            httpx.HTTPError: if API call fails (e.g., issue not found)
+        """
+        url = f"/repos/{self.owner}/{self.repo}/issues/{issue_number}"
+        response = self.client.get(url)
+        response.raise_for_status()
+
+        issue_data = response.json()
+        return GitHubIssue(
+            number=issue_data["number"],
+            title=issue_data["title"],
+            body=issue_data.get("body", "") or "",
+            labels=[label["name"] for label in issue_data.get("labels", [])],
+            state=issue_data["state"],
+            created_at=issue_data["created_at"],
+            url=issue_data["html_url"],
+        )
+
     def add_labels(self, issue_number: int, labels: List[str]) -> List[str]:
         """
         Add labels to issue.
