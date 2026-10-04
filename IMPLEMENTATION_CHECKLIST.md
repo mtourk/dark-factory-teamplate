@@ -691,7 +691,7 @@
   - Resolves `factory/cli.py`'s `run`/`queue`/`pause`/`resume` placeholders (currently "not yet implemented (Phase 4 backlog scheduler)")
 - [ ] **Phase 18.2 — New-app deploy automation**
   - On `needs_new_app = true`: `wrangler deploy` using the operator's own already-authenticated local CLI session (no new secret stored or minted — ADR-007 §3)
-  - Attach a Cloudflare Custom Domain at `<project-slug>.mtourk.com` (auto-provisions its own DNS record on the existing `mtourk.com` zone — no manual DNS step)
+  - **First determine the app's shape** (Worker-only / Pages+Worker / Pages-only — see decision table in `docs/operations/CLOUDFLARE_DNS_AUTOMATION.md`), **then** attach the Cloudflare Custom Domain at `<project-slug>.mtourk.com` to whichever resource is user-facing (Pages if a frontend exists, Worker only if API-only). **Never assign the same hostname to both Pages and a Worker** — Cloudflare accepts the second assignment silently and overrides the first with no error, which is exactly how `factory.mtourk.com` broke during Phase 17.0 (see `docs/operations/INTAKE_DEPLOYMENT_PLAYBOOK.md` §2.5 for the incident writeup). If the app has both a frontend and an API, the Worker stays on its ambient `*.workers.dev` domain or gets a second, distinct hostname (`api-<project-slug>.mtourk.com`)
   - Report the final live URL via the progress endpoint on `done`
   - New app's Worker receives no copy of `GEMINI_API_KEY`/`GITHUB_REPO_CREATE_TOKEN`; capability is shared by calling back into the central Intake Worker, never by copying secrets (ADR-007 §4)
 - [ ] **Phase 18.3 — Existing-repo edit/deploy flag**
@@ -722,4 +722,4 @@
 
 ---
 
-*Last updated: 2026-10-04 — added Phase 18 (ADR-007); added `docs/operations/INTAKE_DEPLOYMENT_PLAYBOOK.md` (proven commands + known-blocked commands for the factory to follow)*
+*Last updated: 2026-10-04 — added Phase 18 (ADR-007); added `docs/operations/INTAKE_DEPLOYMENT_PLAYBOOK.md` (proven commands + known-blocked commands for the factory to follow); Phase 18.2 amended with the "one hostname, one resource" lesson from the `factory.mtourk.com` Pages/Worker custom-domain conflict (ADR-007 §3, `CLOUDFLARE_DNS_AUTOMATION.md` critical rule, `INTAKE_DEPLOYMENT_PLAYBOOK.md` §2.5)*

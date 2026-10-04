@@ -66,6 +66,63 @@ curl -s -i -X OPTIONS https://dark-factory-intake.mohammad-tourk.workers.dev/con
 
 ---
 
+## 2.5 Custom Domains: One Hostname, One Resource (Critical for Phase 18)
+
+**The failure pattern:** A single Cloudflare-managed domain (e.g., `factory.mtourk.com`) can only be assigned to *one* resource at a time — either Pages OR Worker OR a DNS zone record. If you try to assign the same domain to both Pages and Worker:
+
+- Cloudflare does not error; it silently accepts the second assignment and **overrides** the first.
+- Traffic to the domain now routes to whichever one you assigned last (or by resource priority if both assignments are "active" in dashboard).
+- You may not notice immediately; instead you get mysterious "page not found" or "API not working" errors without understanding why.
+- You **cannot** serve the Pages frontend and Worker API from the same domain via domain assignment alone.
+
+**The mistake (this session):** `factory.mtourk.com` was initially assigned to the Worker because that was the first resource available. When Pages was deployed and its custom domain feature was used, assigning the domain to Pages *overrode* the Worker assignment. Meanwhile, the Worker had hardcoded CORS origin `"https://factory.mtourk.com"`, so when trying to serve static assets, the request would fail (or return 404 from Pages' SPA fallback if you're lucky).
+
+**The workaround (anti-pattern, DON'T do this):** Add a hardcoded fallback route in the Worker that proxies requests to `https://cd836e02.dark-factory-intake.pages.dev/`, trying to manually route the UI requests to Pages and API requests to the Worker. **NEVER DO THIS** because:
+1. The Pages preview URL (`cd836e02.dark-factory-intake.pages.dev`) is **generated fresh on every Pages deploy** and will immediately go stale.
+2. It doubles every request through two hops (Worker → Pages) instead of going direct to Pages.
+3. It bypasses Cloudflare's Pages CDC/caching optimizations.
+4. It reintroduces the exact "stale URL breaks everything" problem you're trying to solve.
+
+**DO — the correct pattern (Architecture-level):**
+
+**Option A (Recommended for Phase 17.0 / single app):**
+- **Pages gets the user-facing custom domain:** `factory.mtourk.com` → Pages (UI)
+- **Worker gets its ambient domain:** `dark-factory-intake.mohammad-tourk.workers.dev` → Worker (API)
+- Frontend code calls the Worker's ambient domain: `fetch("https://dark-factory-intake.mohammad-tourk.workers.dev/conversations", ...)` — **this never changes, even if you deploy the app 100 times**.
+
+This is the current live setup (proven working).
+
+**Option B (For Phase 18 / multiple apps with separate API subdomains):**
+- **Pages gets:** `<app-slug>.mtourk.com` → Pages (UI)
+- **Worker gets:** `api.<app-slug>.mtourk.com` → Worker (API, provisioned via DNS CNAME, see `CLOUDFLARE_DNS_AUTOMATION.md`)
+- Frontend code calls the API subdomain: `fetch("https://api.<app-slug>.mtourk.com/conversations", ...)`
+
+**Option C (Not recommended):**
+- Both resources behind a single domain, but routed by **path** (not subdomain): `factory.mtourk.com/` → Pages, `factory.mtourk.com/api/*` → Worker. Requires either a reverse proxy in front of Cloudflare (complexity) or routing logic in one of the Cloudflare resources (anti-pattern, see the workaround disaster above).
+
+**For Phase 18 automation:** When the factory provisions a new app's infrastructure:
+1. Provision Pages deployment (becomes live automatically on Pages' default domain)
+2. Provision Worker deployment (lives on its workers.dev domain automatically)
+3. Create a Pages custom domain (e.g., `new-app.mtourk.com`) — Cloudflare auto-provisions the DNS record for Pages
+4. **DO NOT** try to assign the same custom domain to the Worker — leave Worker on its ambient `.workers.dev` domain or use a subdomain (e.g., `api.new-app.mtourk.com`) if you want a prettier API URL
+5. Update the new app's frontend to call the Worker's actual domain in its source code or environment config
+
+**Verification:**
+```bash
+# Pages should respond with HTML for the custom domain
+curl -s https://factory.mtourk.com/ | head -1
+# → <!DOCTYPE html>
+
+# Worker API should respond with JSON on its own domain
+curl -s https://dark-factory-intake.mohammad-tourk.workers.dev/version
+# → {"version":"3","deployed_at":"..."}
+
+# If you somehow got the domains crossed and are getting JSON on Pages custom domain, 
+# or HTML on the Worker domain, the assignment is reversed — fix in Cloudflare dashboard.
+```
+
+---
+
 ## 3. Gemini model selection
 
 **DO** use this exact default + fallback chain (current, working, in `factory/intake/worker/src/gemini.ts`):

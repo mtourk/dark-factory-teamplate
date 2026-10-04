@@ -76,13 +76,31 @@ curl -X POST https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records \
 
 ---
 
+## ⚠️ Critical Rule: One Hostname, One Resource
+
+**Learned the hard way during Phase 17.0 deployment** (see `docs/operations/INTAKE_DEPLOYMENT_PLAYBOOK.md` §2.5 for the full incident writeup) — a single hostname (e.g., `expense-tracker.mtourk.com`) can be assigned to **exactly one** Cloudflare resource: a Pages project OR a Worker, never both. Assigning it to a second resource **silently overrides** the first with no error — the domain just starts serving different content than expected, with no warning.
+
+**Before provisioning any new app's subdomain, the runner must first determine the app's shape:**
+
+| App shape | Hostname assignment |
+|---|---|
+| **Worker only** (no frontend, e.g. a pure API/bot) | `<slug>.mtourk.com` → Worker directly (the pattern in the example below is correct for this case) |
+| **Pages + Worker** (frontend + backend API, e.g. the intake system itself) | `<slug>.mtourk.com` → **Pages** (frontend). Worker stays on its ambient `*.workers.dev` domain, or gets a **separate** hostname like `api-<slug>.mtourk.com` if a branded API URL matters. The frontend's own source code/config then points at whichever domain the Worker actually ended up on. |
+| **Pages only** (static site, no backend) | `<slug>.mtourk.com` → Pages, no Worker DNS step at all |
+
+**The runner must never attempt to assign the same hostname to two resources "just in case."** Decide the app's shape first (this is almost always knowable from the issue/profile — does it need a backend?), then provision exactly one DNS/custom-domain assignment per hostname.
+
+---
+
 ## Example: Provisioning a New Feature App Subdomain (Phase 18 Use Case)
 
-Scenario: A new GitHub issue arrives for a project called "expense-tracker". Phase 18's runner:
+Scenario: A new GitHub issue arrives for a project called "expense-tracker", and it needs a Worker-only backend (no separate frontend — this example is the **Worker only** row above). Phase 18's runner:
 
 1. Creates a new GitHub repo `expense-tracker` on the user's account
 2. Deploys a Worker to `https://dark-factory-expense-tracker.developers.workers.dev` (wrangler auto-generates the stable domain)
 3. Provisions the DNS record so `expense-tracker.mtourk.com` points to that Worker, with a Cloudflare Custom Domain configuration
+
+**If this app instead needed a Pages frontend too** (the **Pages + Worker** row above), step 3 would attach `expense-tracker.mtourk.com` to the **Pages** project instead, and the Worker would either stay on its ambient domain or get `api-expense-tracker.mtourk.com` as a second, separate DNS record — never the same hostname as Pages.
 
 **Pseudocode (Python, as would go in `factory/deploy/cloudflare_adapter.py`):**
 
