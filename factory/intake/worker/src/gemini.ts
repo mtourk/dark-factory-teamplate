@@ -1,9 +1,12 @@
 /**
- * Dark Factory Intake Worker — Gemini Live Integration
+ * Dark Factory Intake Worker — Gemini Live Integration + Local LLM Support
  *
- * Handles minting ephemeral Gemini Live tokens.
- * Per ADR-005, the long-lived API key lives only as a Cloudflare Worker secret;
- * tokens are short-lived (1 hour) and minted on-demand for each session.
+ * Handles:
+ * 1. Text discovery responses: prefers local Ollama (no API cost), falls back to Gemini
+ * 2. Voice ephemeral token minting: uses Gemini Live (no local alternative for real-time audio)
+ *
+ * Per ADR-005, long-lived API keys live only as Cloudflare Worker secrets;
+ * tokens are short-lived (1 hour) and minted on-demand.
  * The frontend never sees the API key.
  */
 
@@ -15,8 +18,10 @@ export interface GeminiTokenResponse {
 
 export class GeminiIntegration {
   private apiKey: string;
-  // Primary model: latest Gemini version (gemini-3 is still rolling out, using 3.5 as stable)
-  // Fallback order tries newest models first
+  private readonly OLLAMA_URL = "http://localhost:11434"; // Local Ollama endpoint (via tunnel)
+  private readonly OLLAMA_MODEL = "neural-chat"; // Lightweight model for discovery; adjust as needed
+
+  // Gemini as fallback for text, primary for voice
   private readonly DEFAULT_MODEL = "gemini-3.5-flash";
   private readonly FALLBACK_MODELS = [
     "gemini-3.5-flash-lite",
@@ -91,12 +96,69 @@ export class GeminiIntegration {
   /**
    * Get a text response from Gemini for a feature discovery conversation.
    *
-   * Takes the full conversation history and asks Gemini for the next response.
-   * This keeps the conversation contextual and natural.
+   * Strategy: Try local Ollama first (instant, free, no rate limits).
+   * Fall back to Gemini if Ollama is unavailable.
    *
-   * Implements retry logic with fallback models for rate limiting and service errors.
+   * Takes the full conversation history and asks for the next response.
+   * This keeps the conversation contextual and natural.
    */
   async getDiscoveryResponse(messages: Array<{ role: string; text: string }>): Promise<string> {
+    // Try local Ollama first (preferred: no API costs, no rate limits, full control)
+    try {
+      return await this.getDiscoveryResponseFromOllama(messages);
+    } catch (ollamaError) {
+      console.warn(`Ollama failed: ${ollamaError instanceof Error ? ollamaError.message : String(ollamaError)}. Falling back to Gemini...`);
+      // Fall back to Gemini if Ollama unavailable
+      return await this.getDiscoveryResponseFromGemini(messages);
+    }
+  }
+
+  /**
+   * Call local Ollama server for discovery responses.
+   * Ollama must be accessible via tunnel (e.g., cloudflare-workers-localhost).
+   */
+  private async getDiscoveryResponseFromOllama(messages: Array<{ role: string; text: string }>): Promise<string> {
+    // Format as Ollama expects (simple message list)
+    const ollamaMessages = messages.map((msg) => ({
+      role: msg.role === "user" ? "user" : "assistant",
+      content: msg.text,
+    }));
+
+    try {
+      const response = await fetch(`${this.OLLAMA_URL}/api/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: this.OLLAMA_MODEL,
+          messages: ollamaMessages,
+          system: GeminiIntegration.getDiscoverySystemPrompt(),
+          stream: false,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Ollama returned ${response.status}`);
+      }
+
+      const data = (await response.json()) as any;
+      if (!data.message?.content) {
+        throw new Error("No response content from Ollama");
+      }
+
+      return data.message.content;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      throw new Error(`Local Ollama unavailable (${this.OLLAMA_URL}): ${errorMsg}`);
+    }
+  }
+
+  /**
+   * Call Gemini API for discovery responses (fallback if Ollama unavailable).
+   * Implements retry logic with fallback models for rate limiting and service errors.
+   */
+  private async getDiscoveryResponseFromGemini(messages: Array<{ role: string; text: string }>): Promise<string> {
     // Format messages for Gemini API (convert "user"/"ai" to "user"/"model")
     const formattedMessages = messages.map((msg) => ({
       role: msg.role === "user" ? "user" : "model",

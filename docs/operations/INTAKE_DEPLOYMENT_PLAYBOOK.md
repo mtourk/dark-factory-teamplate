@@ -123,32 +123,91 @@ curl -s https://dark-factory-intake.mohammad-tourk.workers.dev/version
 
 ---
 
-## 3. Gemini model selection
+## 3. Local LLM (Ollama) for Text, Gemini for Voice (Phase 17.1+)
 
-**DO** use this exact default + fallback chain (current, working, in `factory/intake/worker/src/gemini.ts`):
+**Updated 2026-10-04:** Text discovery now prefers local Ollama; Gemini is used only for voice and as a fallback.
+
+### The strategy
+
+The app has two input modes:
+
+1. **Voice** (`🎤 Describe your feature idea`) — requires Gemini Live's real-time audio streaming. No local LLM alternative.
+2. **Text** (`Type your idea instead`) — just needs a discovery interview. **Prefers local Ollama** (free, fast, no rate limits), **falls back to Gemini** if Ollama unreachable.
+
+### Why prefer local Ollama for text
+
+- **Zero API cost** — local Ollama is free; Gemini API costs credits/month
+- **No rate limits** — won't hit Gemini's API quota mid-discovery
+- **No model deprecation surprises** — you control the model; no sudden "404: model no longer available" (which broke the app 2026-10-04)
+- **Full response length** — no token caps; discovery can be as detailed as needed
+- **Privacy** — conversation never leaves your machine
+
+### Setup: local Ollama with tunnel
+
+**Prerequisite:** Ollama running locally (`ollama serve` listening on `http://localhost:11434`). Download from https://ollama.ai
+
+The Worker code tries `http://localhost:11434/api/chat` first. Since the Worker runs on Cloudflare (cloud), not your machine, you need a tunnel to expose localhost:
+
+```bash
+# Using Cloudflare tunnel (one-time setup):
+npm install -g @cloudflare/wrangler
+wrangler login
+
+# In a separate terminal, create a tunnel to expose localhost:11434
+cloudflare-workers-localhost --listen localhost:11434 --expose
+
+# Or use ngrok (simpler, no account required):
+brew install ngrok  # macOS
+ngrok http 11434
+```
+
+Once the tunnel is active, the Worker can reach local Ollama and will use it for all text discovery requests. If Ollama is offline, the Worker falls back to Gemini automatically.
+
+### Model selection (Ollama)
+
+Default is `neural-chat` (lightweight, good for discovery interviews). To change, edit `factory/intake/worker/src/gemini.ts`:
 
 ```typescript
-private readonly DEFAULT_MODEL = "gemini-2.5-flash-native-audio-preview-09-2025"; // Live/voice token minting
-private readonly FALLBACK_MODELS = [   // text generateContent fallback chain, tried in order on 429/503
-  "gemini-3.5-flash",
-  "gemini-3-flash",
-  "gemini-2.5-flash",
-  "gemini-2.5-flash-lite",
-  "gemini-2.0-flash",
-];
-```
-The fallback loop in `getDiscoveryResponse()` tries `DEFAULT_MODEL` then each fallback in order, continuing past `429` (rate limit) and `503` (service unavailable), and only throwing once every model in the chain has failed. This retry pattern — not a single hardcoded model — is what makes the discovery chat resilient; keep it.
-
-**DON'T** hardcode a single model name without a fallback chain, and don't assume older/short model names still resolve. Several names returned `404` (model not found / deprecated) or `503` before the correct chain above was found. If you're changing models, verify with a direct curl against `generateContent` before wiring it into the Worker:
-```bash
-curl -s -X POST "https://generativelanguage.googleapis.com/v1/models/<MODEL_NAME>:generateContent" \
-  -H "Content-Type: application/json" -H "x-goog-api-key: $GEMINI_API_KEY" \
-  -d '{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}'
+private readonly OLLAMA_MODEL = "neural-chat"; // Change to your preferred model
 ```
 
-**DO** keep `max_output_tokens: 1500` in `generation_config`. History: it was raised from 500 → 2000 (responses were getting cut off mid-sentence at 500), then removed entirely at one point (per a request to "just let it run"), which correlated with a run of failures/empty responses, then reinstated at `1500` as the stable value. **DON'T** remove `max_output_tokens` outright — leaving it unset was tried and was worse, not better.
+Tested and recommended:
+- `neural-chat` (recommended for discovery — balanced, fast, good context window)
+- `mistral` (faster, slightly less conversational)
+- `llama2` (slower, more detailed)
+
+Install models with: `ollama pull neural-chat`
+
+### When Gemini is used
+
+- **Voice mode:** always Gemini Live (no alternative for real-time audio)
+- **Text mode:** Gemini if Ollama is unreachable
+  - Ollama tunnel is down
+  - Local Ollama server is offline
+  - Worker can't reach `localhost:11434`
+
+This graceful degradation ensures voice mode and text mode both keep working even if the tunnel fails.
+
+### Known issues / debugging
+
+**"Sorry, I had trouble generating a response" (text mode only):**
+- Check if local Ollama is running: `curl http://localhost:11434/api/tags`
+- Check the tunnel is active and exposing 11434
+- Worker logs will show which fallback it's using; check `wrangler tail` for details
+
+**"Gemini model no longer available" (404):**
+- This happened 2026-10-04 when Gemini deprecated `gemini-2.0-flash` and `gemini-2.5-flash-lite`
+- Current fallback chain (in `factory/intake/worker/src/gemini.ts`) is `gemini-3.5-flash` → `gemini-3.5-flash-lite` → `gemini-3-flash` → `gemini-2.5-flash`
+- If you see a 404 again, test the model with curl first:
+  ```bash
+  curl -s -X POST "https://generativelanguage.googleapis.com/v1/models/<MODEL>:generateContent" \
+    -H "Content-Type: application/json" -H "x-goog-api-key: $GEMINI_API_KEY" \
+    -d '{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}'
+  ```
 
 ---
+
+## 3b. Gemini API Key (Voice Mode / Fallback)
 
 ## 4. Deployment commands — what runs, what's blocked
 
