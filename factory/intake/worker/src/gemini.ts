@@ -163,6 +163,11 @@ export class GeminiIntegration {
           messages: ollamaMessages,
           system: GeminiIntegration.getDiscoverySystemPrompt(),
           stream: false,
+          // Keep the (32B) model loaded in memory for 30 min after this call so later
+          // messages in the same conversation don't pay the ~70-85s cold-load penalty
+          // again — a cold load pushed past Cloudflare's ~100s edge timeout and caused
+          // a 524 in production on 2026-10-04 (caught by the /ollama/status dashboard).
+          keep_alive: "30m",
         }),
       });
 

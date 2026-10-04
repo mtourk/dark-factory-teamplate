@@ -234,6 +234,18 @@ This graceful degradation ensures voice mode and text mode both keep working eve
 - Check the tunnel is active and exposing 11434
 - Worker logs will show which fallback it's using; check `wrangler tail` for details
 
+**`ollama_requests` logs "Ollama returned 524" (confirmed in production, 2026-10-04):**
+- `524` is a **Cloudflare edge timeout**, not an Ollama error — the edge connected to the tunnel but got no response within ~100s and gave up. `cloudflared`'s own log shows this as `"Incoming request ended abruptly: context canceled"`.
+- Root cause: `qwen2.5-coder:32b` is a 32B model. Ollama unloads a model from memory after an idle period (default 5 min). The first request after that unload pays a ~70-85s **cold-load** penalty before generation even starts — easily enough to blow past the ~100s edge timeout, especially under any added load.
+- The dashboard's `/ollama/status` → `loaded_models: []` is the tell: if it's empty right before a request, expect a slow/timed-out response.
+- **Fix applied:** the Ollama `/api/chat` request body now sends `"keep_alive": "30m"` (see `gemini.ts`), so the model stays resident for 30 minutes after each successful call instead of unloading after 5. This prevents repeat cold-loads **within** an active conversation, but does **not** fix the very first request after Ollama/the tunnel has been freshly restarted — that one will still cold-load.
+- **Mitigation for the first request after a restart:** manually warm the model right after starting `cloudflared`/Ollama, before a real user hits it:
+  ```bash
+  curl -s https://ollama.mtourk.com/api/chat -H "Content-Type: application/json" \
+    -d '{"model":"qwen2.5-coder:32b","messages":[{"role":"user","content":"hi"}],"stream":false,"keep_alive":"30m"}' > /dev/null
+  ```
+- **Important:** this failure mode was happening silently before the monitoring dashboard existed — the Worker's graceful fallback meant the user still got a (Gemini) response and never saw an error. The dashboard (§3c) is what makes this visible and diagnosable at all; don't remove or weaken the fallback-to-Gemini behavior, it's working as intended here.
+
 **"Gemini model no longer available" (404):**
 - This happened 2026-10-04 when Gemini deprecated `gemini-2.0-flash` and `gemini-2.5-flash-lite`
 - Current fallback chain (in `factory/intake/worker/src/gemini.ts`) is `gemini-3.5-flash` → `gemini-3.5-flash-lite` → `gemini-3-flash` → `gemini-2.5-flash`
