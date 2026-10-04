@@ -15,13 +15,14 @@ export interface GeminiTokenResponse {
 
 export class GeminiIntegration {
   private apiKey: string;
-  private readonly DEFAULT_MODEL = "gemini-2.5-flash-native-audio-preview-09-2025";
+  // Primary model: latest Gemini version (gemini-3 is still rolling out, using 3.5 as stable)
+  // Fallback order tries newest models first
+  private readonly DEFAULT_MODEL = "gemini-3.5-flash";
   private readonly FALLBACK_MODELS = [
+    "gemini-3.5-flash-lite",
     "gemini-3.5-flash",
     "gemini-3-flash",
     "gemini-2.5-flash",
-    "gemini-2.5-flash-lite",
-    "gemini-2.0-flash",
   ];
 
   constructor(apiKey: string) {
@@ -126,7 +127,7 @@ export class GeminiIntegration {
             contents: formattedMessages,
             generation_config: {
               temperature: 0.7,
-              max_output_tokens: 1500,
+              // Removed max_output_tokens limit to allow full responses without truncation
             },
           }),
         });
