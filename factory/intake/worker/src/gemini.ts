@@ -18,7 +18,7 @@ export interface GeminiTokenResponse {
 
 export class GeminiIntegration {
   private apiKey: string;
-  private readonly OLLAMA_URL = "http://localhost:11434"; // Local Ollama endpoint (via tunnel)
+  private readonly OLLAMA_URL = "https://ollama.mtourk.com"; // Ollama exposed via Cloudflare tunnel
   private readonly OLLAMA_MODEL = "neural-chat"; // Lightweight model for discovery; adjust as needed
 
   // Gemini as fallback for text, primary for voice

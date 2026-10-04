@@ -142,35 +142,59 @@ The app has two input modes:
 - **Full response length** — no token caps; discovery can be as detailed as needed
 - **Privacy** — conversation never leaves your machine
 
-### Setup: local Ollama with tunnel
+### Setup: local Ollama with Cloudflare tunnel (ollama.mtourk.com)
 
-**Prerequisite:** Ollama running locally (`ollama serve` listening on `http://localhost:11434`). Download from https://ollama.ai
+**Prerequisite:** Ollama running locally and exposed via a Cloudflare tunnel at `https://ollama.mtourk.com`.
 
-The Worker code tries `http://localhost:11434/api/chat` first. Since the Worker runs on Cloudflare (cloud), not your machine, you need a tunnel to expose localhost:
+The Worker code reaches Ollama via the public tunnel URL (not localhost). This means:
+- No ngrok or separate tunnel tool needed
+- Tunnel persists across machine restarts
+- Clean, stable URL
+
+**Setup (one-time, if not already done):**
+
+If you haven't already, create a Cloudflare tunnel to expose your local Ollama server:
 
 ```bash
-# STEP 1: Download and install ngrok (one-time)
-# Go to https://ngrok.com/download
-# Download for your OS, extract ngrok to a folder in your PATH
-# Verify: ngrok version
+# 1. Install cloudflared (Cloudflare tunnel client)
+# Download from: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/install-and-setup/installation/
+# Or via package manager (macOS): brew install cloudflare/cloudflare/cloudflared
+# Or via package manager (Windows): choco install cloudflared
 
-# STEP 2: Start Ollama (in one terminal)
-ollama serve
+# 2. Authenticate with Cloudflare
+cloudflared login
+# (Opens browser to authorize)
 
-# STEP 3: Start ngrok tunnel (in another terminal)
-ngrok http 11434
+# 3. Create a tunnel pointing to local Ollama
+cloudflared tunnel create ollama
 
-# You'll see output like:
-#   Forwarding    https://xxxx-xx-xxx-xxx-xx.ngrok.io -> localhost:11434
-# The tunnel is now active. Keep this terminal open.
+# 4. Route the domain to the tunnel
+cloudflared tunnel route dns ollama ollama.mtourk.com
+# (This adds a DNS CNAME record in Cloudflare dashboard automatically)
 
-# STEP 4: Verify tunnel is working
-# From yet another terminal:
-curl http://localhost:11434/api/tags
-# Should return your Ollama models (not a connection error)
+# 5. Configure the tunnel (create ~/.cloudflared/config.yml)
+# Add:
+# tunnel: <TUNNEL_UUID>
+# credentials-file: ~/.cloudflared/<TUNNEL_UUID>.json
+# ingress:
+#   - hostname: ollama.mtourk.com
+#     service: http://localhost:11434
+#   - service: http_status:404
+
+# 6. Run the tunnel
+cloudflared tunnel run ollama
+# (Keep this running; it stays active in background)
 ```
 
-Once the tunnel is active, the Worker can reach local Ollama and will use it for all text discovery requests. If Ollama is offline or the tunnel is down, the Worker falls back to Gemini automatically.
+Once the tunnel is active, the Worker automatically uses `https://ollama.mtourk.com/api/chat` for text discovery. **No ngrok, no manual URL switching.**
+
+**Testing the tunnel:**
+```bash
+curl https://ollama.mtourk.com/api/tags
+# Should return your Ollama models, not a connection error
+```
+
+**Current status:** Tunnel is active and Worker is configured to use it. Text-response calls go through `ollama.mtourk.com` automatically.
 
 ### Model selection (Ollama)
 
