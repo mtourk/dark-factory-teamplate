@@ -24,6 +24,15 @@ export interface GithubIssue {
   html_url: string;
 }
 
+export interface Message {
+  id: string;
+  conversation_id: string;
+  role: "user" | "ai";
+  text: string;
+  timestamp: string;
+  token_count?: number;
+}
+
 export class GitHubIntegration {
   private token: string;
   private apiBase = "https://api.github.com";
@@ -128,6 +137,7 @@ export class GitHubIntegration {
       constraints?: string[];
       dataBehavior?: string;
       errorHandling?: string;
+      rawConversation?: Message[];
     }
   ): Promise<GithubIssue> {
     const endpoint = `${this.apiBase}/repos/${repo}/issues`;
@@ -138,9 +148,11 @@ export class GitHubIntegration {
     const payload = {
       title,
       body,
-      // Labels: factory:ready marks as eligible for implementation,
-      // model:discovery-7b indicates this was discovered via 7B model (for traceability)
-      labels: ["factory:ready", "model:discovery-7b"],
+      // Labels:
+      // - factory:ready marks as eligible for implementation
+      // - model:discovery-7b indicates this was discovered via 7B model (for traceability)
+      // - model:implementation-32b signals to local factory runner to use 32B model for code generation
+      labels: ["factory:ready", "model:discovery-7b", "model:implementation-32b"],
     };
 
     try {
@@ -270,6 +282,16 @@ export class GitHubIntegration {
       lines.push("");
       lines.push(bmad.errorHandling);
       lines.push("");
+    }
+
+    if (bmad.rawConversation && bmad.rawConversation.length > 0) {
+      lines.push("## Raw Discovery Conversation");
+      lines.push("");
+      for (const msg of bmad.rawConversation) {
+        const role = msg.role === "user" ? "**User:**" : "**AI:**";
+        lines.push(`${role} ${msg.text}`);
+        lines.push("");
+      }
     }
 
     return lines.join("\n");

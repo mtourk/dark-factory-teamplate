@@ -210,12 +210,16 @@ async function handleFileIssue(
     // Ensure labels exist
     await github.ensureLabelsExist(repo);
 
+    // Get full conversation history to include in the issue
+    const allMessages = await db.getMessages(conversationId);
+
     // File the issue
     const issue = await github.fileFeatureIssue(repo, body.title, {
       description: body.description,
       acceptanceCriteria: body.acceptance_criteria,
       nonGoals: body.non_goals,
       constraints: body.constraints,
+      rawConversation: allMessages,
     });
 
     // Update conversation to filed status
