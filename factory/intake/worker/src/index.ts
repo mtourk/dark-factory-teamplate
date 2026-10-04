@@ -38,6 +38,8 @@ export interface Env {
   GEMINI_API_KEY: string;
   ENVIRONMENT: string;
   GITHUB_ORG: string;
+  OLLAMA_URL?: string;
+  OLLAMA_MODEL?: string;
   VERSION?: string;
   DEPLOYED_AT?: string;
 }

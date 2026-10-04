@@ -73,7 +73,7 @@ export class IntakeDB {
       `
       )
       .first();
-    return result as Conversation;
+    return result as unknown as Conversation;
   }
 
   async getConversation(id: string): Promise<Conversation | null> {
@@ -81,7 +81,7 @@ export class IntakeDB {
       .prepare("SELECT * FROM conversations WHERE id = ?")
       .bind(id)
       .first();
-    return (result as Conversation) || null;
+    return (result as unknown as Conversation) || null;
   }
 
   async updateConversationDraft(
@@ -124,7 +124,7 @@ export class IntakeDB {
       .bind(...values)
       .first();
 
-    return result as Conversation;
+    return result as unknown as Conversation;
   }
 
   async fileConversation(
@@ -144,7 +144,7 @@ export class IntakeDB {
       )
       .bind(repoUrl, issueNumber, issueUrl, new Date().toISOString(), id)
       .first();
-    return result as Conversation;
+    return result as unknown as Conversation;
   }
 
   // === Messages ===
@@ -164,7 +164,7 @@ export class IntakeDB {
       )
       .bind(conversationId, role, text)
       .first();
-    return result as Message;
+    return result as unknown as Message;
   }
 
   async getMessages(conversationId: string): Promise<Message[]> {
@@ -172,7 +172,7 @@ export class IntakeDB {
       .prepare("SELECT * FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC")
       .bind(conversationId)
       .all();
-    return (results.results || []) as Message[];
+    return (results.results || []) as unknown as Message[];
   }
 
   // === Pending Profiles ===
@@ -259,7 +259,7 @@ export class IntakeDB {
       )
       .bind(conversationId, model, promptText, promptText.length)
       .first();
-    return result as OllamaRequest;
+    return result as unknown as OllamaRequest;
   }
 
   async completeOllamaRequest(
@@ -278,7 +278,7 @@ export class IntakeDB {
       )
       .bind(responseText, responseText.length, new Date().toISOString(), durationMs, id)
       .first();
-    return result as OllamaRequest;
+    return result as unknown as OllamaRequest;
   }
 
   async failOllamaRequest(
@@ -297,7 +297,7 @@ export class IntakeDB {
       )
       .bind(errorMessage, new Date().toISOString(), durationMs, id)
       .first();
-    return result as OllamaRequest;
+    return result as unknown as OllamaRequest;
   }
 
   async getOllamaHistory(limit = 50, offset = 0): Promise<OllamaRequest[]> {
@@ -311,7 +311,7 @@ export class IntakeDB {
       )
       .bind(limit, offset)
       .all();
-    return (results.results || []) as OllamaRequest[];
+    return (results.results || []) as unknown as OllamaRequest[];
   }
 
   async getOllamaHistoryCount(): Promise<number> {
@@ -325,14 +325,14 @@ export class IntakeDB {
         "SELECT * FROM ollama_requests WHERE status = 'pending' ORDER BY started_at DESC LIMIT 1"
       )
       .first();
-    return (result as OllamaRequest) || null;
+    return (result as unknown as OllamaRequest) || null;
   }
 
   async getLastOllamaRequest(): Promise<OllamaRequest | null> {
     const result = await this.db
       .prepare("SELECT * FROM ollama_requests ORDER BY started_at DESC LIMIT 1")
       .first();
-    return (result as OllamaRequest) || null;
+    return (result as unknown as OllamaRequest) || null;
   }
 }
 
