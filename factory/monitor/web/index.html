@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dark Factory — Ollama Monitor</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>🦙 Ollama Monitor</h1>
+      <div class="header-sub">Live status + request history for <code>ollama.mtourk.com</code></div>
+    </header>
+
+    <main class="main">
+      <!-- Live status card -->
+      <section class="card status-card">
+        <div class="card-header">
+          <h2>Live Status</h2>
+          <span id="status-dot" class="status-dot unknown"></span>
+        </div>
+
+        <div class="status-grid">
+          <div class="status-field">
+            <div class="status-label">Reachable</div>
+            <div id="status-reachable" class="status-value">—</div>
+          </div>
+          <div class="status-field">
+            <div class="status-label">Loaded model(s)</div>
+            <div id="status-loaded" class="status-value">—</div>
+          </div>
+          <div class="status-field">
+            <div class="status-label">Currently generating</div>
+            <div id="status-generating" class="status-value">—</div>
+          </div>
+        </div>
+
+        <div id="current-request" class="current-request hidden">
+          <h3>In-flight request</h3>
+          <div class="kv"><span>Model</span><span id="current-model">—</span></div>
+          <div class="kv"><span>Started</span><span id="current-started">—</span></div>
+          <div class="kv"><span>Elapsed</span><span id="current-elapsed">—</span></div>
+          <div class="kv-block">
+            <span>Prompt</span>
+            <pre id="current-prompt">—</pre>
+          </div>
+        </div>
+
+        <div class="status-footer">
+          <span id="status-updated">Not checked yet</span>
+          <label class="auto-refresh-toggle">
+            <input type="checkbox" id="auto-refresh-checkbox" checked />
+            Auto-refresh every 3s
+          </label>
+        </div>
+      </section>
+
+      <!-- History card -->
+      <section class="card history-card">
+        <div class="card-header">
+          <h2>Request History</h2>
+          <button id="refresh-history-btn" class="btn-secondary">↻ Refresh</button>
+        </div>
+
+        <div id="history-empty" class="history-empty hidden">No requests logged yet.</div>
+
+        <div class="history-table-wrap">
+          <table class="history-table">
+            <thead>
+              <tr>
+                <th>Started</th>
+                <th>Status</th>
+                <th>Model</th>
+                <th>Prompt</th>
+                <th>Response</th>
+                <th>Duration</th>
+              </tr>
+            </thead>
+            <tbody id="history-body"></tbody>
+          </table>
+        </div>
+
+        <div class="pagination">
+          <button id="prev-page-btn" class="btn-secondary">← Newer</button>
+          <span id="pagination-info">—</span>
+          <button id="next-page-btn" class="btn-secondary">Older →</button>
+        </div>
+      </section>
+    </main>
+
+    <!-- Detail modal for a single history row -->
+    <div id="detail-modal" class="modal hidden">
+      <div class="modal-content">
+        <button id="detail-close-btn" class="modal-close">✕</button>
+        <h2>Request Detail</h2>
+        <div class="kv"><span>ID</span><span id="detail-id">—</span></div>
+        <div class="kv"><span>Model</span><span id="detail-model">—</span></div>
+        <div class="kv"><span>Status</span><span id="detail-status">—</span></div>
+        <div class="kv"><span>Started</span><span id="detail-started">—</span></div>
+        <div class="kv"><span>Completed</span><span id="detail-completed">—</span></div>
+        <div class="kv"><span>Duration</span><span id="detail-duration">—</span></div>
+        <div class="kv-block">
+          <span>Prompt</span>
+          <pre id="detail-prompt">—</pre>
+        </div>
+        <div class="kv-block">
+          <span>Response</span>
+          <pre id="detail-response">—</pre>
+        </div>
+        <div class="kv-block">
+          <span>Error</span>
+          <pre id="detail-error">—</pre>
+        </div>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <span id="version-info">Dark Factory Ollama Monitor</span>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

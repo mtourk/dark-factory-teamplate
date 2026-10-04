@@ -10,6 +10,8 @@
  * The frontend never sees the API key.
  */
 
+import IntakeDB from "./db";
+
 export interface GeminiTokenResponse {
   token: string;
   expires_at: string;
@@ -102,10 +104,14 @@ export class GeminiIntegration {
    * Takes the full conversation history and asks for the next response.
    * This keeps the conversation contextual and natural.
    */
-  async getDiscoveryResponse(messages: Array<{ role: string; text: string }>): Promise<string> {
+  async getDiscoveryResponse(
+    messages: Array<{ role: string; text: string }>,
+    db?: IntakeDB,
+    conversationId?: string
+  ): Promise<string> {
     // Try local Ollama first (preferred: no API costs, no rate limits, full control)
     try {
-      return await this.getDiscoveryResponseFromOllama(messages);
+      return await this.getDiscoveryResponseFromOllama(messages, db, conversationId);
     } catch (ollamaError) {
       console.warn(`Ollama failed: ${ollamaError instanceof Error ? ollamaError.message : String(ollamaError)}. Falling back to Gemini...`);
       // Fall back to Gemini if Ollama unavailable
@@ -115,14 +121,36 @@ export class GeminiIntegration {
 
   /**
    * Call local Ollama server for discovery responses.
-   * Ollama must be accessible via tunnel (e.g., cloudflare-workers-localhost).
+   * Ollama is accessible via a pre-existing Cloudflare tunnel (ollama.mtourk.com).
+   *
+   * Every call is logged to the ollama_requests table (pending -> success/error) so the
+   * monitoring dashboard (monitor.mtourk.com, Phase 18+) has live status + full history.
+   * Logging is best-effort: if `db` isn't provided, or a log write itself fails, the
+   * actual Ollama call still proceeds — monitoring must never block or break the feature.
    */
-  private async getDiscoveryResponseFromOllama(messages: Array<{ role: string; text: string }>): Promise<string> {
+  private async getDiscoveryResponseFromOllama(
+    messages: Array<{ role: string; text: string }>,
+    db?: IntakeDB,
+    conversationId?: string
+  ): Promise<string> {
     // Format as Ollama expects (simple message list)
     const ollamaMessages = messages.map((msg) => ({
       role: msg.role === "user" ? "user" : "assistant",
       content: msg.text,
     }));
+
+    const promptText = messages[messages.length - 1]?.text || "";
+    const startedAt = Date.now();
+    let requestId: string | null = null;
+
+    if (db) {
+      try {
+        const record = await db.createOllamaRequest(conversationId || null, this.OLLAMA_MODEL, promptText);
+        requestId = record.id;
+      } catch (logError) {
+        console.warn(`Failed to log Ollama request start: ${logError instanceof Error ? logError.message : String(logError)}`);
+      }
+    }
 
     try {
       const response = await fetch(`${this.OLLAMA_URL}/api/chat`, {
@@ -147,9 +175,26 @@ export class GeminiIntegration {
         throw new Error("No response content from Ollama");
       }
 
+      if (db && requestId) {
+        try {
+          await db.completeOllamaRequest(requestId, data.message.content, Date.now() - startedAt);
+        } catch (logError) {
+          console.warn(`Failed to log Ollama request success: ${logError instanceof Error ? logError.message : String(logError)}`);
+        }
+      }
+
       return data.message.content;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
+
+      if (db && requestId) {
+        try {
+          await db.failOllamaRequest(requestId, errorMsg, Date.now() - startedAt);
+        } catch (logError) {
+          console.warn(`Failed to log Ollama request error: ${logError instanceof Error ? logError.message : String(logError)}`);
+        }
+      }
+
       throw new Error(`Local Ollama unavailable (${this.OLLAMA_URL}): ${errorMsg}`);
     }
   }

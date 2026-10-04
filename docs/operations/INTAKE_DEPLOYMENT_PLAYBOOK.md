@@ -198,18 +198,24 @@ curl https://ollama.mtourk.com/api/tags
 
 ### Model selection (Ollama)
 
-Default is `neural-chat` (lightweight, good for discovery interviews). To change, edit `factory/intake/worker/src/gemini.ts`:
+**⚠️ Critical lesson (2026-10-04):** `OLLAMA_MODEL` was hardcoded to `"neural-chat"` for the entire time this feature existed, but **that model was never installed on the server**. Every call to `/api/chat` with it returned `{"error":"model 'neural-chat' not found"}`, which was caught by the `try/catch` in `getDiscoveryResponseFromOllama()` and silently fell back to Gemini — so every single "Ollama worked" observation during initial testing was actually Gemini the whole time, with zero visible error. **This is exactly the failure mode the monitoring dashboard in §3c exists to catch.**
+
+Current model, verified installed via `curl https://ollama.mtourk.com/api/tags`:
 
 ```typescript
-private readonly OLLAMA_MODEL = "neural-chat"; // Change to your preferred model
+private readonly OLLAMA_MODEL = "qwen2.5-coder:32b"; // Verified via /api/tags — do not change without re-verifying
 ```
 
-Tested and recommended:
-- `neural-chat` (recommended for discovery — balanced, fast, good context window)
-- `mistral` (faster, slightly less conversational)
-- `llama2` (slower, more detailed)
-
-Install models with: `ollama pull neural-chat`
+**Before ever changing `OLLAMA_MODEL`, verify the model actually exists on the server:**
+```bash
+curl -s https://ollama.mtourk.com/api/tags | grep -o '"name":"[^"]*"'
+```
+Then verify a real chat call succeeds (not just that the model is *listed* — `/api/tags` only shows what's pulled, not what responds):
+```bash
+curl -s -X POST https://ollama.mtourk.com/api/chat -H "Content-Type: application/json" \
+  -d '{"model":"<MODEL>","messages":[{"role":"user","content":"hi"}],"stream":false}'
+```
+Only update the constant once this curl returns an actual `message.content`, not an `error` field. `qwen2.5-coder:32b` is a 32B model — cold-load latency on first request after idle can be ~85s (69.8s model load + ~16s eval, observed 2026-10-04). This is a UX risk worth watching on the monitoring dashboard (§3c), not a bug.
 
 ### When Gemini is used
 
@@ -240,6 +246,49 @@ This graceful degradation ensures voice mode and text mode both keep working eve
 
 ---
 
+## 3c. Ollama Monitoring Dashboard (Phase 18+, built 2026-10-04)
+
+**Why it exists:** the `neural-chat` incident above (silent fallback to Gemini, undetected for the feature's entire lifetime) made clear that "the app responded" is not evidence Ollama actually ran. This dashboard gives direct visibility into Ollama's real behavior, not just the Worker's claimed behavior.
+
+**Scope (per explicit user choice):** status + full history, not token-by-token streaming. Ollama's native API (`/api/chat`, `/api/ps`, `/api/tags`) has no built-in request log or dashboard — this is custom-built on top of it.
+
+**Architecture:**
+- **D1 table** `ollama_requests` (added in `factory/intake/worker/schema.sql`) — one row per call to Ollama, written by `GeminiIntegration.getDiscoveryResponseFromOllama()` in `src/gemini.ts`: a `pending` row is inserted before the `fetch` to Ollama, then updated to `success` (with response + duration) or `error` (with error message + duration) after. Logging is wrapped in its own `try/catch` and is **best-effort** — a logging failure never blocks or breaks the actual Ollama call.
+- **Worker routes** (`src/index.ts`):
+  - `GET /ollama/status` — combines Ollama's own `/api/ps` (what's loaded in memory right now) with a D1 lookup for any `pending` row (is a request *we* issued currently in flight) and the most recent completed row.
+  - `GET /ollama/history?limit=&offset=` — paginated rows from `ollama_requests`, newest first, plus a total count.
+- **Frontend**: new static site at `factory/monitor/web/` (`index.html` / `style.css` / `app.js`), polling `/ollama/status` every 3s (toggleable) and `/ollama/history` on load/refresh/pagination. Clicking a history row shows full prompt/response/error in a modal. No build step — plain HTML/CSS/JS, same pattern as `factory/intake/web/`.
+- **CORS**: `index.ts` now resolves `Access-Control-Allow-Origin` dynamically from an allow-list (`ALLOWED_ORIGINS`) instead of a single hardcoded origin, so both `factory.mtourk.com` and the new `monitor.mtourk.com` can call the same Worker. Add any future frontend's origin to that array — never widen it to `*`.
+- **Hosting**: new Cloudflare Pages project (`dark-factory-monitor`), separate from `dark-factory-intake`, with its own custom domain `monitor.mtourk.com` — a brand-new hostname, so no conflict with the one-hostname-one-resource rule (§2.5).
+
+**Deploy steps still required (all blocked for an agent — see §4 — hand to a human):**
+```bash
+# 1. Apply the new ollama_requests table to the LIVE D1 database (not yet applied as of 2026-10-04)
+cd factory/intake/worker
+wrangler d1 execute dark-factory-intake --remote --command "$(cat schema.sql)"
+# or re-run the whole schema.sql safely — every CREATE TABLE/INDEX uses IF NOT EXISTS
+
+# 2. Deploy the updated Worker (new routes + CORS allow-list + Ollama request logging)
+wrangler deploy
+
+# 3. Create the Pages project for the monitor frontend (first time only)
+cd ../monitor/web
+wrangler pages project create dark-factory-monitor
+wrangler pages deploy . --project-name dark-factory-monitor --commit-dirty=true
+
+# 4. Attach the custom domain in the Cloudflare dashboard (Pages project → Custom domains → monitor.mtourk.com)
+# or via the DNS automation approach in docs/operations/CLOUDFLARE_DNS_AUTOMATION.md
+```
+
+**Verifying it worked:**
+```bash
+curl -s https://dark-factory-intake.mohammad-tourk.workers.dev/ollama/status
+curl -s https://dark-factory-intake.mohammad-tourk.workers.dev/ollama/history
+# Then open https://monitor.mtourk.com once the Pages custom domain is attached
+```
+
+---
+
 ## 3b. Gemini API Key (Voice Mode / Fallback)
 
 ## 4. Deployment commands — what runs, what's blocked
@@ -248,7 +297,10 @@ This is the single most important operational fact for an autonomous runner: **s
 
 Confirmed blocked, regardless of shell:
 - `wrangler deploy --force`
+- `wrangler deploy` (plain, no flags — confirmed blocked again 2026-10-04 when deploying the Ollama monitoring routes; §4's earlier "Confirmed working" claim for the plain form did **not** hold up in this session's environment, so don't rely on it)
 - `wrangler pages deploy . --project-name dark-factory-intake --commit-dirty=true` (tried directly via Bash)
+- `wrangler pages deploy . --project-name dark-factory-monitor --commit-dirty=true` (same block, new Pages project — confirms this is about the command shape, not a specific project)
+- `wrangler d1 execute dark-factory-intake --remote --command "CREATE TABLE ..."` (confirmed blocked 2026-10-04 trying to apply the `ollama_requests` migration — any `--remote` D1 write is treated as a production mutation)
 - Running `./deploy.ps1` / `.\deploy.ps1` without `-DryRun` (i.e., the real, non-dry-run path) via the PowerShell tool
 
 The denial is explicit and says not to work around it by switching tools, encodings, or splitting the command up — and that was respected here; **don't try to defeat this classifier**. The practical consequence: **an agent cannot currently complete the actual Pages/Worker deploy step by itself in this environment.** The correct procedure is:
@@ -310,7 +362,7 @@ A stray extra closing `}` in `src/index.ts` once broke the build with a plain "U
 
 ## 8. D1 database
 
-- Live tables today: `conversations`, `messages`, `pending_profiles`. Schema file: `factory/intake/worker/schema.sql` (plus `schema_phase18.sql`, which is a **proposed, not-yet-applied** migration for `build_queue` / `build_queue_updates` per ADR-007 — don't assume those tables exist until that file has actually been run with `wrangler d1 execute`).
+- Live tables today: `conversations`, `messages`, `pending_profiles`. Schema file: `factory/intake/worker/schema.sql` now also defines `ollama_requests` (Ollama monitoring, §3c) — **written to the file but NOT yet applied to the live D1 database** as of 2026-10-04 (the `wrangler d1 execute --remote` call was blocked for the agent; a human needs to run it, see §3c/§4). Also plus `schema_phase18.sql`, which is a **proposed, not-yet-applied** migration for `build_queue` / `build_queue_updates` per ADR-007 — don't assume either set of new tables exists until actually run with `wrangler d1 execute`.
 - Apply a schema file with: `wrangler d1 execute dark-factory-intake < path/to/schema.sql` (run from `factory/intake/worker/`, no `--env production` per §4's drift note).
 - D1's `database_id` in `wrangler.toml` is not a secret and is committed: `ffdfcde8-d68d-48b6-9436-2b12b5245968`.
 
@@ -331,7 +383,8 @@ Full runbook already written: `docs/operations/CLOUDFLARE_DNS_AUTOMATION.md`. Sh
 | Deploy Pages (plain) | `wrangler pages deploy . --project-name dark-factory-intake --commit-dirty=true` (from `web/`) | **Blocked** |
 | Dry-run version bump | `./deploy.sh --dry-run` / `.\deploy.ps1 -DryRun` | Works |
 | Real version-bump deploy | `./deploy.sh` / `.\deploy.ps1` | **Blocked** (hand to human) |
-| Apply D1 schema | `wrangler d1 execute dark-factory-intake < schema.sql` | Not yet tested from agent context |
+| Apply D1 schema (local/remote) | `wrangler d1 execute dark-factory-intake --remote --command "..."` | **Blocked** (confirmed 2026-10-04) |
+| Deploy monitor Pages site | `wrangler pages deploy . --project-name dark-factory-monitor --commit-dirty=true` (from `factory/monitor/web/`) | **Blocked** |
 | Tail live logs | `wrangler tail` (from `worker/`) | Works (read-only) |
 | Check version/build | `curl .../version` | Works |
 | Check CORS origin | `curl -i -X OPTIONS ... -H "Origin: ..."` | Works |

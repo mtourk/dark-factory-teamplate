@@ -43,6 +43,21 @@ export interface PendingProfile {
   error?: string;
 }
 
+export interface OllamaRequest {
+  id: string;
+  conversation_id?: string | null;
+  model: string;
+  status: "pending" | "success" | "error";
+  prompt_text: string;
+  prompt_length?: number;
+  response_text?: string;
+  response_length?: number;
+  error_message?: string;
+  started_at: string;
+  completed_at?: string;
+  duration_ms?: number;
+}
+
 export class IntakeDB {
   constructor(private db: D1Database) {}
 
@@ -225,6 +240,99 @@ export class IntakeDB {
       ...row,
       synced: Boolean(row.synced),
     };
+  }
+
+  // === Ollama Request Monitoring (Phase 18+) ===
+
+  async createOllamaRequest(
+    conversationId: string | null,
+    model: string,
+    promptText: string
+  ): Promise<OllamaRequest> {
+    const result = await this.db
+      .prepare(
+        `
+        INSERT INTO ollama_requests (conversation_id, model, status, prompt_text, prompt_length)
+        VALUES (?, ?, 'pending', ?, ?)
+        RETURNING *
+      `
+      )
+      .bind(conversationId, model, promptText, promptText.length)
+      .first();
+    return result as OllamaRequest;
+  }
+
+  async completeOllamaRequest(
+    id: string,
+    responseText: string,
+    durationMs: number
+  ): Promise<OllamaRequest> {
+    const result = await this.db
+      .prepare(
+        `
+        UPDATE ollama_requests
+        SET status = 'success', response_text = ?, response_length = ?, completed_at = ?, duration_ms = ?
+        WHERE id = ?
+        RETURNING *
+      `
+      )
+      .bind(responseText, responseText.length, new Date().toISOString(), durationMs, id)
+      .first();
+    return result as OllamaRequest;
+  }
+
+  async failOllamaRequest(
+    id: string,
+    errorMessage: string,
+    durationMs: number
+  ): Promise<OllamaRequest> {
+    const result = await this.db
+      .prepare(
+        `
+        UPDATE ollama_requests
+        SET status = 'error', error_message = ?, completed_at = ?, duration_ms = ?
+        WHERE id = ?
+        RETURNING *
+      `
+      )
+      .bind(errorMessage, new Date().toISOString(), durationMs, id)
+      .first();
+    return result as OllamaRequest;
+  }
+
+  async getOllamaHistory(limit = 50, offset = 0): Promise<OllamaRequest[]> {
+    const results = await this.db
+      .prepare(
+        `
+        SELECT * FROM ollama_requests
+        ORDER BY started_at DESC
+        LIMIT ? OFFSET ?
+      `
+      )
+      .bind(limit, offset)
+      .all();
+    return (results.results || []) as OllamaRequest[];
+  }
+
+  async getOllamaHistoryCount(): Promise<number> {
+    const result = await this.db.prepare("SELECT COUNT(*) as count FROM ollama_requests").first();
+    return ((result as any)?.count as number) ?? 0;
+  }
+
+  async getPendingOllamaRequest(): Promise<OllamaRequest | null> {
+    const result = await this.db
+      .prepare(
+        "SELECT * FROM ollama_requests WHERE status = 'pending' ORDER BY started_at DESC LIMIT 1"
+      )
+      .first();
+    return (result as OllamaRequest) || null;
+  }
+
+  async getLastOllamaRequest(): Promise<OllamaRequest | null> {
+    const result = await this.db
+      .prepare("SELECT * FROM ollama_requests ORDER BY started_at DESC LIMIT 1")
+      .first();
+    return (result as OllamaRequest) || null;
   }
 }
 

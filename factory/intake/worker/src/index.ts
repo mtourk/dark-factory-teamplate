@@ -14,15 +14,18 @@
  * - POST /projects - create a new project repository
  * - GET /pending-profiles - list profiles awaiting local sync
  * - POST /pending-profiles/:id/sync-confirmed - mark profile synced
+ * - GET /ollama/status - live Ollama status (loaded models + any in-flight request)
+ * - GET /ollama/history - paginated history of past Ollama requests
  *
  * Secrets (Cloudflare Worker environment):
  * - GITHUB_REPO_CREATE_TOKEN: narrow GitHub PAT for repo creation
  * - GEMINI_API_KEY: Gemini API key (never exposed to browser)
  *
  * Database (D1):
- * - conversations, messages, pending_profiles tables
+ * - conversations, messages, pending_profiles, ollama_requests tables
  *
- * CORS: enabled for frontend (https://9404a979.dark-factory-intake.pages.dev)
+ * CORS: allow-listed origins only (factory.mtourk.com for the intake UI,
+ * monitor.mtourk.com for the Ollama monitoring dashboard added in Phase 18+)
  */
 
 import IntakeDB from "./db";
@@ -39,77 +42,74 @@ export interface Env {
   DEPLOYED_AT?: string;
 }
 
+// Each frontend gets its own hostname (one-hostname-one-resource, see ADR-007 §3).
+// Add new origins here as new Pages projects are attached — never widen this to "*".
+const ALLOWED_ORIGINS = ["https://factory.mtourk.com", "https://monitor.mtourk.com"];
+
 const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "https://factory.mtourk.com",
+  "Access-Control-Allow-Origin": ALLOWED_ORIGINS[0],
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
   "Content-Type": "application/json",
 };
 
+function resolveCorsOrigin(request: Request): string {
+  const origin = request.headers.get("Origin") || "";
+  return ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    const corsOrigin = resolveCorsOrigin(request);
+
     if (request.method === "OPTIONS") {
-      return new Response("OK", { headers: CORS_HEADERS });
+      return new Response("OK", {
+        headers: { ...CORS_HEADERS, "Access-Control-Allow-Origin": corsOrigin },
+      });
     }
 
     const url = new URL(request.url);
     const path = url.pathname;
     const method = request.method;
 
+    let response: Response;
     try {
       // Route dispatcher
       if (path === "/conversations" && method === "POST") {
-        return await handleCreateConversation(env);
+        response = await handleCreateConversation(env);
+      } else if (path === "/version" && method === "GET") {
+        response = await handleGetVersion(env);
+      } else if (path === "/ollama/status" && method === "GET") {
+        response = await handleOllamaStatus(env);
+      } else if (path === "/ollama/history" && method === "GET") {
+        response = await handleOllamaHistory(env, request);
+      } else if (/^\/conversations\/([^/]+)$/.test(path) && method === "GET") {
+        response = await handleGetConversation(env, path.match(/^\/conversations\/([^/]+)$/)![1]);
+      } else if (/^\/conversations\/([^/]+)\/messages$/.test(path) && method === "POST") {
+        response = await handlePostMessage(env, path.match(/^\/conversations\/([^/]+)\/messages$/)![1], request);
+      } else if (/^\/conversations\/([^/]+)\/gemini-token$/.test(path) && method === "POST") {
+        response = await handleMintGeminiToken(env, path.match(/^\/conversations\/([^/]+)\/gemini-token$/)![1]);
+      } else if (/^\/conversations\/([^/]+)\/file-issue$/.test(path) && method === "POST") {
+        response = await handleFileIssue(env, path.match(/^\/conversations\/([^/]+)\/file-issue$/)![1], request);
+      } else if (path === "/projects" && method === "POST") {
+        response = await handleCreateProject(env, request);
+      } else if (path === "/pending-profiles" && method === "GET") {
+        response = await handleListPendingProfiles(env);
+      } else if (/^\/pending-profiles\/([^/]+)\/sync-confirmed$/.test(path) && method === "POST") {
+        response = await handleMarkProfileSynced(env, path.match(/^\/pending-profiles\/([^/]+)\/sync-confirmed$/)![1]);
+      } else if (/^\/conversations\/([^/]+)\/text-response$/.test(path) && method === "POST") {
+        response = await handleTextResponse(env, path.match(/^\/conversations\/([^/]+)\/text-response$/)![1], request);
+      } else {
+        response = notFound();
       }
-
-      if (path === "/version" && method === "GET") {
-        return await handleGetVersion(env);
-      }
-
-      const conversationMatch = path.match(/^\/conversations\/([^/]+)$/);
-      if (conversationMatch && method === "GET") {
-        return await handleGetConversation(env, conversationMatch[1]);
-      }
-
-      const messageMatch = path.match(/^\/conversations\/([^/]+)\/messages$/);
-      if (messageMatch && method === "POST") {
-        return await handlePostMessage(env, messageMatch[1], request);
-      }
-
-      const tokenMatch = path.match(/^\/conversations\/([^/]+)\/gemini-token$/);
-      if (tokenMatch && method === "POST") {
-        return await handleMintGeminiToken(env, tokenMatch[1]);
-      }
-
-      const fileMatch = path.match(/^\/conversations\/([^/]+)\/file-issue$/);
-      if (fileMatch && method === "POST") {
-        return await handleFileIssue(env, fileMatch[1], request);
-      }
-
-      if (path === "/projects" && method === "POST") {
-        return await handleCreateProject(env, request);
-      }
-
-      if (path === "/pending-profiles" && method === "GET") {
-        return await handleListPendingProfiles(env);
-      }
-
-      const syncMatch = path.match(/^\/pending-profiles\/([^/]+)\/sync-confirmed$/);
-      if (syncMatch && method === "POST") {
-        return await handleMarkProfileSynced(env, syncMatch[1]);
-      }
-
-      const responseMatch = path.match(/^\/conversations\/([^/]+)\/text-response$/);
-      if (responseMatch && method === "POST") {
-        return await handleTextResponse(env, responseMatch[1], request);
-      }
-
-      return notFound();
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       console.error("Worker error:", errorMsg, error);
-      return json({ error: errorMsg }, 500);
+      response = json({ error: errorMsg }, 500);
     }
+
+    response.headers.set("Access-Control-Allow-Origin", corsOrigin);
+    return response;
   },
 };
 
@@ -304,13 +304,70 @@ async function handleTextResponse(
   // Add the user's message to the history
   const allMessages = [...messages, { role: "user", text: body.text }];
 
-  // Get Gemini response
+  // Get Gemini response (prefers local Ollama; db + conversationId let it log to ollama_requests
+  // for the monitoring dashboard — see handleOllamaStatus/handleOllamaHistory below)
   const gemini = new GeminiIntegration(env.GEMINI_API_KEY);
   const responseText = await gemini.getDiscoveryResponse(
-    allMessages.map((m) => ({ role: m.role, text: m.text }))
+    allMessages.map((m) => ({ role: m.role, text: m.text })),
+    db,
+    conversationId
   );
 
   return json({ response: responseText });
+}
+
+/**
+ * Live Ollama status for the monitoring dashboard (monitor.mtourk.com, Phase 18+).
+ *
+ * Combines two signals:
+ * - Ollama's own /api/ps (what's actually loaded in memory right now)
+ * - Our own ollama_requests log (whether a request we initiated is still in flight,
+ *   since /api/ps alone doesn't tell you if a response is being generated for *us*)
+ */
+async function handleOllamaStatus(env: Env): Promise<Response> {
+  const db = new IntakeDB(env.DB);
+  const OLLAMA_URL = "https://ollama.mtourk.com";
+
+  let reachable = false;
+  let loadedModels: unknown[] = [];
+  try {
+    const psResponse = await fetch(`${OLLAMA_URL}/api/ps`);
+    if (psResponse.ok) {
+      const psData = (await psResponse.json()) as any;
+      loadedModels = psData.models || [];
+      reachable = true;
+    }
+  } catch (error) {
+    console.warn(`Ollama /api/ps check failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  const [pendingRequest, lastRequest] = await Promise.all([
+    db.getPendingOllamaRequest(),
+    db.getLastOllamaRequest(),
+  ]);
+
+  return json({
+    reachable,
+    loaded_models: loadedModels,
+    is_generating: !!pendingRequest,
+    current_request: pendingRequest,
+    last_request: lastRequest,
+  });
+}
+
+/** Paginated history of past Ollama requests, newest first. */
+async function handleOllamaHistory(env: Env, request: Request): Promise<Response> {
+  const db = new IntakeDB(env.DB);
+  const url = new URL(request.url);
+  const limit = Math.min(Math.max(parseInt(url.searchParams.get("limit") || "50", 10) || 50, 1), 200);
+  const offset = Math.max(parseInt(url.searchParams.get("offset") || "0", 10) || 0, 0);
+
+  const [requests, total] = await Promise.all([
+    db.getOllamaHistory(limit, offset),
+    db.getOllamaHistoryCount(),
+  ]);
+
+  return json({ requests, total, limit, offset });
 }
 
 // ============ Utilities ============

@@ -1,5 +1,5 @@
 -- Phase 17 Intake Database Schema (Cloudflare D1)
--- Three tables: conversations (discovery session), messages (chat history), pending_profiles (new repos awaiting sync)
+-- Four tables: conversations, messages, pending_profiles, ollama_requests (monitoring)
 
 CREATE TABLE IF NOT EXISTS conversations (
   id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(8)))),
@@ -39,7 +39,27 @@ CREATE TABLE IF NOT EXISTS pending_profiles (
   error TEXT
 );
 
+-- Ollama request monitoring (Phase 18+)
+-- Tracks every call to the local Ollama server for dashboard visibility
+CREATE TABLE IF NOT EXISTS ollama_requests (
+  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(8)))),
+  conversation_id TEXT REFERENCES conversations(id) ON DELETE CASCADE,
+  model TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'success', 'error')),
+  prompt_text TEXT NOT NULL,
+  prompt_length INTEGER,
+  response_text TEXT,
+  response_length INTEGER,
+  error_message TEXT,
+  started_at TEXT NOT NULL DEFAULT (datetime('now')),
+  completed_at TEXT,
+  duration_ms INTEGER
+);
+
 -- Indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_conversations_status ON conversations(status);
 CREATE INDEX IF NOT EXISTS idx_pending_profiles_synced ON pending_profiles(synced);
+CREATE INDEX IF NOT EXISTS idx_ollama_requests_started_at ON ollama_requests(started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ollama_requests_status ON ollama_requests(status);
+CREATE INDEX IF NOT EXISTS idx_ollama_requests_conversation_id ON ollama_requests(conversation_id);
