@@ -19,7 +19,7 @@ export interface GeminiTokenResponse {
 export class GeminiIntegration {
   private apiKey: string;
   private readonly OLLAMA_URL = "https://ollama.mtourk.com"; // Ollama exposed via Cloudflare tunnel
-  private readonly OLLAMA_MODEL = "neural-chat"; // Lightweight model for discovery; adjust as needed
+  private readonly OLLAMA_MODEL = "qwen2.5-coder:32b"; // Actual model installed on the Ollama server (verified via /api/tags)
 
   // Gemini as fallback for text, primary for voice
   private readonly DEFAULT_MODEL = "gemini-3.5-flash";
