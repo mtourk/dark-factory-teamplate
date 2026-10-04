@@ -17,8 +17,9 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WEB_DIR="$SCRIPT_DIR/factory/intake/web"
-WORKER_DIR="$SCRIPT_DIR/factory/intake/worker"
+# SCRIPT_DIR is now factory/intake/ (the directory this script lives in)
+WEB_DIR="$SCRIPT_DIR/web"
+WORKER_DIR="$SCRIPT_DIR/worker"
 VERSION_FILE="$WEB_DIR/VERSION"
 WRANGLER_TOML="$WORKER_DIR/wrangler.toml"
 DRY_RUN=false
