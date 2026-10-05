@@ -75,8 +75,10 @@ class _StubOrchestrator:
     result_to_return = None
     raise_error = None
 
-    def __init__(self, builder_coordinator):
+    def __init__(self, builder_coordinator, gateway=None, state_session=None):
         self.builder_coordinator = builder_coordinator
+        self.gateway = gateway
+        self.state_session = state_session
 
     def run_full_cycle(self, **kwargs):
         _StubOrchestrator.calls.append(kwargs)

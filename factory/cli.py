@@ -37,7 +37,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from factory.state import init_db, get_db_session
+from factory.state import init_db, get_db_session, ensure_project
 from factory.config import load_config
 from factory.profiles import (
     NoActiveProfileError,
@@ -299,25 +299,46 @@ def run(
             "the gate will pass with zero stages run. See 'factory profile show'."
         )
 
-    orchestrator = ImplementationOrchestrator(BuilderCoordinator())
+    # Durable run state (FF-P21-01): persist Run/Stage rows so runs survive a
+    # process restart and are later resumable. Best-effort — if DB setup fails
+    # we degrade to an in-memory run rather than aborting the whole command.
+    state_session = None
+    try:
+        state_session = init_db()  # create schema if needed + return a session
+        ensure_project(
+            state_session,
+            project_id=active_profile.name,
+            github_repo=active_profile.target_repo.repo_string,
+        )
+    except Exception as e:
+        console.print(f"[yellow]⚠[/yellow] State persistence disabled (DB unavailable): {e}")
+        state_session = None
+
+    orchestrator = ImplementationOrchestrator(
+        BuilderCoordinator(), state_session=state_session
+    )
     to_process = eligible[:1] if once else eligible
 
-    for issue in to_process:
-        run_id = f"RUN-{active_profile.name}-{issue.number}-{int(time.time())}"
-        console.print(f"[bold]→ Issue #{issue.number}[/bold]: {issue.title} ({run_id})")
-        try:
-            result = orchestrator.run_full_cycle(
-                run_id=run_id,
-                github_adapter=github,
-                issue_number=issue.number,
-                project_id=active_profile.name,
-                repo_root=workspace_path,
-                stage_commands=stage_commands,
-            )
-        except Exception as e:
-            console.print(f"  [red]✗ ERROR[/red]: {e}")
-            continue
-        _print_run_result(result)
+    try:
+        for issue in to_process:
+            run_id = f"RUN-{active_profile.name}-{issue.number}-{int(time.time())}"
+            console.print(f"[bold]→ Issue #{issue.number}[/bold]: {issue.title} ({run_id})")
+            try:
+                result = orchestrator.run_full_cycle(
+                    run_id=run_id,
+                    github_adapter=github,
+                    issue_number=issue.number,
+                    project_id=active_profile.name,
+                    repo_root=workspace_path,
+                    stage_commands=stage_commands,
+                )
+            except Exception as e:
+                console.print(f"  [red]✗ ERROR[/red]: {e}")
+                continue
+            _print_run_result(result)
+    finally:
+        if state_session is not None:
+            state_session.close()
 
 
 @app.command()

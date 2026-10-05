@@ -8,6 +8,7 @@ Per §4.4: "A resumed run must verify real Git/GitHub/deployment state
 and must not repeat a consequential action without an idempotency check."
 """
 
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
@@ -18,6 +19,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.pool import StaticPool
 
 from factory.profiles import get_factory_root
 
@@ -27,9 +29,74 @@ from factory.profiles import get_factory_root
 DB_PATH = get_factory_root() / "state.db"
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-engine = create_engine(f"sqlite:///{DB_PATH}", echo=False)
-SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
+
+# FB-12: the SQLAlchemy engine/session are created lazily (on first use) and
+# honor the FACTORY_DB env var, rather than binding a process-wide on-disk
+# engine at import time. This lets tests inject an isolated/in-memory database
+# (conftest.py sets FACTORY_DB=":memory:") instead of silently sharing the real
+# <factory_root>/state.db file across the whole test session.
+_engine = None
+_session_local = None
+
+
+def _resolve_db_url() -> str:
+    """Resolve the SQLite URL used for the engine.
+
+    FACTORY_DB overrides the default on-disk path:
+      - ":memory:"      → a shared in-memory DB (isolated to this process)
+      - "/path/to.db"   → that file
+      - unset           → DB_PATH (<factory_root>/state.db)
+    """
+    override = os.environ.get("FACTORY_DB")
+    if override == ":memory:":
+        return "sqlite:///:memory:"
+    if override:
+        return f"sqlite:///{override}"
+    return f"sqlite:///{DB_PATH}"
+
+
+def get_engine():
+    """Return the process engine, creating it lazily on first use."""
+    global _engine
+    if _engine is None:
+        url = _resolve_db_url()
+        if url == "sqlite:///:memory:":
+            # Keep a single shared connection so the in-memory schema and data
+            # survive across sessions within the same process.
+            _engine = create_engine(
+                url,
+                echo=False,
+                connect_args={"check_same_thread": False},
+                poolclass=StaticPool,
+            )
+        else:
+            _engine = create_engine(url, echo=False)
+    return _engine
+
+
+def _get_session_local():
+    global _session_local
+    if _session_local is None:
+        _session_local = sessionmaker(bind=get_engine())
+    return _session_local
+
+
+def configure_engine(db_url: Optional[str] = None):
+    """(Re)configure the engine. Intended for tests.
+
+    Disposes any existing engine and clears the cached sessionmaker so the next
+    DB call rebuilds from FACTORY_DB/DB_PATH (or the explicit `db_url`).
+    """
+    global _engine, _session_local
+    if _engine is not None:
+        _engine.dispose()
+    _engine = None
+    _session_local = None
+    if db_url is not None:
+        value = db_url[len("sqlite:///"):] if db_url.startswith("sqlite:///") else db_url
+        os.environ["FACTORY_DB"] = value
+    return get_engine()
 
 
 # ============================================================================
@@ -256,13 +323,13 @@ class EmergencyStop(Base):
 
 def init_db() -> Session:
     """Initialize database schema and return session."""
-    Base.metadata.create_all(engine)
-    return SessionLocal()
+    Base.metadata.create_all(get_engine())
+    return _get_session_local()()
 
 
 def get_db_session() -> Session:
     """Get a new database session."""
-    return SessionLocal()
+    return _get_session_local()()
 
 
 def close_db_session(session: Session) -> None:
@@ -303,20 +370,17 @@ def attempt_claim(
 
     if existing:
         if is_claim_stale(existing):
-            # Stale claim: recover and reuse
-            existing.lease_status = "stale"
-            new_claim = Claim(
-                id=f"claim-{project_id}-{issue_number}-{run_id}",
-                project_id=project_id,
-                issue_number=issue_number,
-                run_id=run_id,
-                lease_owner=f"factory-{run_id}",
-                lease_status="active",
-                heartbeat=datetime.utcnow(),
-            )
-            session.add(new_claim)
+            # Stale claim: recover by reassigning the EXISTING row to the new
+            # run. There is a unique constraint on (project_id, issue_number),
+            # so inserting a second claim row for the same issue would violate
+            # it — the stale lease must be taken over in place, which is also
+            # the correct "one active claim per issue" semantics.
+            existing.run_id = run_id
+            existing.lease_owner = f"factory-{run_id}"
+            existing.lease_status = "active"
+            existing.heartbeat = datetime.utcnow()
             session.commit()
-            return new_claim
+            return existing
         else:
             # Active claim: cannot claim
             return None
@@ -367,6 +431,128 @@ def deactivate_emergency_stop(session: Session) -> None:
         stop.active = False
         stop.deactivated_at = datetime.utcnow()
     session.commit()
+
+
+# ============================================================================
+# Run lifecycle persistence (FF-P21-01)
+# ============================================================================
+
+def ensure_project(
+    session: Session,
+    project_id: str,
+    github_repo: str,
+    target_branch: str = "main",
+) -> Project:
+    """Return the Project row for `project_id`, creating it if absent.
+
+    `github_repo` is required/unique on first creation; on later calls the
+    existing row is returned unchanged.
+    """
+    project = session.query(Project).filter(Project.id == project_id).first()
+    if project is None:
+        project = Project(
+            id=project_id,
+            github_repo=github_repo,
+            target_branch=target_branch,
+        )
+        session.add(project)
+        session.commit()
+    return project
+
+
+def create_or_reset_run(
+    session: Session,
+    run_id: str,
+    project_id: str,
+    issue_number: int,
+    status: str = "implementing",
+    stage: str = "build",
+) -> Run:
+    """Create a Run row, or reset the existing one for (project, issue).
+
+    There is a unique constraint on (project_id, issue_number), so
+    re-processing the same issue reuses the existing row (keeping its id)
+    instead of failing. The row is reset to a fresh, resumable start state.
+    """
+    now = datetime.utcnow()
+    existing = session.query(Run).filter(
+        Run.project_id == project_id,
+        Run.issue_number == issue_number,
+    ).first()
+
+    if existing is not None:
+        existing.status = status
+        existing.stage = stage
+        existing.attempts = 0
+        existing.repair_count = 0
+        existing.completed_at = None
+        existing.lease_heartbeat = now
+        session.commit()
+        return existing
+
+    run = Run(
+        id=run_id,
+        project_id=project_id,
+        issue_number=issue_number,
+        status=status,
+        stage=stage,
+        attempts=0,
+        repair_count=0,
+        claimed_at=now,
+        lease_heartbeat=now,
+    )
+    session.add(run)
+    session.commit()
+    return run
+
+
+def update_run(session: Session, run_id: str, **fields) -> Optional[Run]:
+    """Patch columns on a Run row and commit. Unknown keys are ignored."""
+    run = session.query(Run).filter(Run.id == run_id).first()
+    if run is None:
+        return None
+    for key, value in fields.items():
+        if hasattr(run, key):
+            setattr(run, key, value)
+    run.lease_heartbeat = datetime.utcnow()
+    session.commit()
+    return run
+
+
+def record_stage(
+    session: Session,
+    run_id: str,
+    stage_name: str,
+    attempt: int,
+    status: str,
+    started_at: Optional[datetime] = None,
+    completed_at: Optional[datetime] = None,
+    error_message: Optional[str] = None,
+    output_schema: Optional[dict] = None,
+    previous_patch_digest: Optional[str] = None,
+) -> Stage:
+    """Upsert a Stage execution record for a run.
+
+    Uses merge keyed on a deterministic id (`<run>-<stage>-<attempt>`) so that
+    re-running the same stage/attempt (e.g. after a crash + resume) updates the
+    row rather than violating the primary key — a small step toward the
+    idempotent-resume requirement in §4.4.
+    """
+    stage = Stage(
+        id=f"{run_id}-{stage_name}-{attempt}",
+        run_id=run_id,
+        stage_name=stage_name,
+        attempt=attempt,
+        status=status,
+        started_at=started_at,
+        completed_at=completed_at,
+        error_message=error_message,
+        output_schema=output_schema,
+        previous_patch_digest=previous_patch_digest,
+    )
+    merged = session.merge(stage)
+    session.commit()
+    return merged
 
 
 if __name__ == "__main__":

@@ -168,11 +168,55 @@ decisions:
     decided_at: "2026-10-05T00:00:00Z"
     blocks: [FF-P07-01]
     related: [FB-02, FB-04]
+    superseded_by: >
+      D-NEW-005 (partial). The "Ollama-only, cloud fallback prohibited / never Gemini substitution"
+      premise is reversed by the API-first migration: cloud providers become the normal path and BMAD
+      (like every agent) calls the provider-agnostic LLM gateway. The *mechanism* of D-NEW-004 Option A
+      (route a turn to the local Ollama gateway) survives as one provider the router may select; what
+      changes is that it is no longer the mandated/only engine and cloud routing is no longer a violation.
+
+  - id: D-NEW-005
+    title: "API-First Multi-Provider LLM architecture (supersedes D-NEW-004's local-only mandate)"
+    status: decided
+    chosen_option: "A"
+    chosen_option_text: >
+      Full API-first: cloud LLM APIs become the normal execution path; the local Ollama model is
+      demoted to an optional provider/fallback. All agents call a provider-agnostic LLM gateway
+      (factory/llm/, built on the LiteLLM Python SDK in-process) and never name a provider. A
+      custom Free-Tier Intelligence layer (quota state + confidence + failure learning) sits above
+      the gateway; a capability+quota-aware router selects provider/model/key. Default cost policy
+      is FREE_ONLY with automatic fallback to local Ollama when free capacity is exhausted (no paid
+      spend without explicit opt-in).
+    context: >
+      The project was designed local-Ollama-first (ADR-001/002, §2, D-NEW-004), but the fixed
+      hardware (HP EliteBook, Core Ultra 7, 32 GB RAM, Intel Arc) cannot make local inference the
+      quality/latency/concurrency foundation an autonomous factory needs. The user approved the
+      repo-root plan "Full API-First Multi-Provider Architecture, Free-Tier Intelligence, Context
+      Management & Agent Continuity Plan.md", which mandates an API-first, multi-provider, multi-key,
+      free-tier/quota/failure/context/memory-aware, resumable architecture, with local kept as a
+      fallback. See the approved implementation plan for the full component/phase/data-model design.
+    decisions_locked:
+      direction: "Full API-first; local Ollama = optional provider/fallback."
+      gateway: "LiteLLM Python SDK, in-process (no separate service, no Postgres/Redis)."
+      free_exhausted: "Auto-fallback to local Ollama (FREE_ONLY default; no silent paid spend)."
+      scope: "Full phased plan, built incrementally, as the FF-P2x backlog track."
+      providers_now: "Google Gemini only (key exists); near-term value = multi-key + local fallback; arch ready for Groq/OpenRouter/Mistral/Cohere/Z AI via the catalog importer."
+      concurrency: "1 active run for now; quota reservation designed concurrency-safe."
+      privacy: "No gating; always-on secret redaction, per-profile local_only override available."
+    consequences: >
+      Resolves FB-02 (Gemini-as-reasoning is no longer a violation once routed through the governed
+      gateway; the ad-hoc timeout substitution in gemini.ts is replaced by the router). Supersedes
+      D-NEW-004's cloud-fallback-prohibition. ADR-005 (voice ephemeral-token boundary) and D-NEW-003
+      (secrets as refs) still hold. New FF-P2x track added to backlog.yml. Several pre-API-first
+      product-plane items (FF-P03/04/05) remain valid and will be re-sequenced after the LLM layer.
+    decided_by: "Mohammad Tourk (user:2026-10-05)"
+    decided_at: "2026-10-05T00:00:00Z"
+    blocks: [FF-P22-01, FF-P22-02, FF-P24-01, FF-P25-01]
+    related: [D-NEW-004, FB-02, ADR-001, ADR-002]
 
 verification:
-  method: "Four decisions recorded as decided (D-NEW-001, 002, 003, 004), all chosen by user Mohammad Tourk on 2026-10-05."
+  method: "Five decisions recorded as decided (D-NEW-001..005), all chosen by user Mohammad Tourk on 2026-10-05."
   open_decisions_requiring_human_input: []
   note: >
-    All four new decisions are now decided and recorded with chosen_option, chosen_option_text,
-    decided_by, and decided_at fields populated. ADR-001..007 remain in their prior status
-    (accepted, superseded, or carried_forward) — no changes there.
+    D-NEW-005 (API-first migration) supersedes D-NEW-004's local-only mandate; both are retained for
+    history. ADR-001..007 remain in their prior status (accepted, superseded, or carried_forward).

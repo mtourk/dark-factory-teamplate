@@ -215,8 +215,110 @@ queue:
       - FF-P17-01
     blocker_id: null
 
-next_eligible_item: FF-P01-01
+  # ==========================================================================
+  # API-First Multi-Provider LLM Migration (FF-P2x track).
+  # Added 2026-10-05 per the approved plan in
+  # "Full API-First Multi-Provider Architecture, Free-Tier Intelligence,
+  # Context Management & Agent Continuity Plan.md" (user-approved) and
+  # decisions.yml:D-NEW-005 (supersedes D-NEW-004 local-only). Dependency-ordered.
+  # ==========================================================================
+  - id: FF-P21-01
+    phase: api-first-state-foundation
+    priority: critical
+    status: verified_complete  # engine lazy + FACTORY_DB (FB-12 resolved); Run/Stage persisted; 7 new tests; full suite 48->32 non-passing, 0 regressions
+    dependencies: []
+    blocker_id: null
+  - id: FF-P21-02
+    phase: api-first-state-foundation
+    priority: critical
+    status: not_started  # TaskCheckpoint/AgentRun/LLMRequest models + resume CLI
+    dependencies: [FF-P21-01]
+    blocker_id: null
+  - id: FF-P22-01
+    phase: api-first-gateway
+    priority: critical
+    status: not_started  # factory/llm/ gateway over LiteLLM; wire dead gateway= seam; replace builder's direct Ollama call (resolves FB-02)
+    dependencies: [FF-P21-01]
+    blocker_id: null
+  - id: FF-P22-02
+    phase: api-first-gateway
+    priority: critical
+    status: not_started  # provider/credential registry + multi-key; model capability registry
+    dependencies: [FF-P22-01]
+    blocker_id: null
+  - id: FF-P23-01
+    phase: api-first-observability
+    priority: high
+    status: not_started  # LLMRequest/RoutingDecision logging, token accounting, request trace
+    dependencies: [FF-P22-01]
+    blocker_id: null
+  - id: FF-P24-01
+    phase: api-first-free-tier
+    priority: critical
+    status: not_started  # Free-Tier Intelligence: QuotaState + confidence + failure classification/learning
+    dependencies: [FF-P22-02, FF-P23-01]
+    blocker_id: null
+  - id: FF-P24-02
+    phase: api-first-free-tier
+    priority: high
+    status: not_started  # catalog importer (vendored awesome-free-llm-apis data.json) + discovery lifecycle
+    dependencies: [FF-P22-02]
+    blocker_id: null
+  - id: FF-P25-01
+    phase: api-first-routing
+    priority: critical
+    status: not_started  # quota-aware routing engine + scoring + atomic reservation + $0-safety -> local fallback
+    dependencies: [FF-P24-01]
+    blocker_id: null
+  - id: FF-P26-01
+    phase: api-first-context
+    priority: high
+    status: not_started  # Context Manager: 9 layers + token budgeting + priority eviction + summary cache
+    dependencies: [FF-P21-02]
+    blocker_id: null
+  - id: FF-P26-02
+    phase: api-first-memory
+    priority: high
+    status: not_started  # agent memory: working + persistent, scopes, ranked retrieval under budget
+    dependencies: [FF-P21-02]
+    blocker_id: null
+  - id: FF-P27-01
+    phase: api-first-handoff
+    priority: critical
+    status: not_started  # handoff package builder + state-aware resume; partial-output + tool/idempotency guards
+    dependencies: [FF-P25-01, FF-P26-01, FF-P26-02]
+    blocker_id: null
+  - id: FF-P28-01
+    phase: api-first-ui
+    priority: high
+    status: not_started  # UI dashboards: provider capacity, keys, routing explanation, failure analytics, trace
+    dependencies: [FF-P23-01, FF-P25-01]
+    blocker_id: null
+  - id: FF-P29-01
+    phase: api-first-testing
+    priority: critical
+    status: not_started  # failure-simulation harness + 5 mandatory critical tests (plan sec 78-82)
+    dependencies: [FF-P27-01]
+    blocker_id: null
+  - id: FF-P30-01
+    phase: api-first-pilot
+    priority: medium
+    status: not_started  # full pilot E2E + benchmark + local-vs-cloud task-routing tuning
+    dependencies: [FF-P27-01, FF-P28-01, FF-P29-01]
+    blocker_id: null
+
+next_eligible_item: FF-P21-02
 next_eligible_item_rationale: >
+  UPDATED 2026-10-05 (API-first migration): the user approved the API-First Multi-Provider LLM
+  migration plan (see repo-root "Full API-First Multi-Provider Architecture..." md and
+  decisions.yml:D-NEW-005, which supersedes D-NEW-004's local-only mandate). This is now the active
+  priority track (FF-P2x). FF-P21-01 (durable Run/Stage persistence + FB-12 fix) is verified_complete.
+  FF-P21-02 (TaskCheckpoint/AgentRun/LLMRequest models + `resume` CLI) is the next unblocked item:
+  its only dependency (FF-P21-01) is verified_complete and it is the state foundation the gateway,
+  free-tier, routing, and handoff phases all build on. The pre-API-first queue below (FF-P01-01 etc.)
+  is paused but not discarded — several items (FF-P03/04/05) remain valid product-plane work and will
+  be re-sequenced against the migration once the LLM layer lands.
+superseded_next_eligible_item_rationale: >
   UPDATED 2026-10-05 (second update this day): FF-P04-01 (app shell) is implemented (85/85 tests
   passing), making FF-P05-01 (New Idea page) dependency-unblocked and the prior pick — see history
   below. Re-picked FF-P01-01 ahead of it, same day, because the user is now standing up a

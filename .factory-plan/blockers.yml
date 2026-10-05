@@ -292,7 +292,7 @@ blockers:
     title: "factory/state.py's module-level SQLAlchemy engine is bound to one real on-disk SQLite file (ignores conftest.py's FACTORY_DB=:memory: fixture entirely); full-suite pytest runs intermittently fail/error depending on what's already on disk at DB_PATH"
     severity: medium
     category: test-bug
-    status: open
+    status: resolved
     discovered_in: "FF-P01-01 remediation agent, while verifying the hardcoded-C:\\Factory-path fix (factory/state.py, factory/context/broker.py, factory/implementation/workspace.py, factory/sealed_qa/acceptance.py, factory/tools/worktrees.py) did not change pytest results"
     evidence:
       - "factory/tests/conftest.py's session-scoped `setup_test_db` fixture sets `os.environ[\"FACTORY_DB\"] = \":memory:\"`, but factory/state.py never reads a FACTORY_DB env var — DB_PATH is a module-level constant computed once at import time (now `get_factory_root() / \"state.db\"`, previously the literal `C:/Factory/state.db`), and `engine`/`SessionLocal` are bound to that single real file for the whole process. The fixture is dead code with respect to isolating state.py's own engine."
@@ -301,15 +301,19 @@ blockers:
       - "Running only the modules directly exercising the 5 files this item touches, in isolation (test_profiles.py, test_workspace.py, test_context_broker.py, test_context_isolation_builder.py, test_phase9_sealed_qa.py, test_phase8_tools_worktrees.py, test_sealed_qa_runner.py): 102 passed, 1 failed. The 1 failure (test_phase8_tools_worktrees.py::TestSecretAccessRestrictions::test_builder_denied_secret_access) is an AuthorizationBroker secret-access decision-logic assertion (DENIED vs REQUIRES_HUMAN_DECISION) with no path/storage involvement at all — pre-existing, unrelated to this item."
     blocks: []
     impact: >
-      Full-suite `pytest factory/tests/` is not reliably green on a long-lived dev machine once
-      state.py's real on-disk DB_PATH accumulates data across many sessions/runs, independent of
-      which root path it resolves to. This is a test-isolation defect in the same family as FB-11
-      (a different file, same root cause class: tests assuming isolation that the fixture layer
-      doesn't actually provide), not a regression introduced by FF-P01-01's path-portability fix,
-      and not blocking FF-P01-01 itself (none of the fix's own target files/tests are implicated).
+      RESOLVED (FF-P21-01). factory/state.py now builds the engine lazily and honors FACTORY_DB, so
+      conftest.py's `:memory:` fixture actually isolates state. The fixture was made function-scoped
+      and resets the engine per test (state.configure_engine). Full-suite non-passing dropped from 48
+      (38 failed + 10 errors) to 32 (32 failed + 0 errors): the 10 flaky errors and the test_phase3/
+      test_phase4 failures were all shared-state symptoms and now pass. Confirmed via stash A/B that
+      the 32 remaining failures are a strict subset of the pre-existing baseline (zero regressions).
+      Those remaining (test_phase6_gateway async-config, test_phase5_leakage, test_phase7/8/12/13,
+      test_schemas_phase2) are real pre-existing bugs to be addressed in their own phases.
     remediation:
-      - "Make factory/state.py read FACTORY_DB (or similar) at engine-creation time so conftest.py's existing `:memory:` fixture actually takes effect, OR refactor state.py to build the engine lazily per-call instead of once at import time, so tests can inject an isolated DB_PATH the way factory/sealed_qa/acceptance.py's SealedQABroker.__init__(sealed_dir=...) already allows for its own storage."
-      - "Audit the other full-suite-only failures (test_phase3/4/6/7/12/13, test_schemas_phase2) individually once isolation is fixed, to confirm which are real assertion bugs vs. further symptoms of shared state."
-    owner: "unassigned — flagged per docs/operations/CROSS_MACHINE_DEV_WORKFLOW.md §3.7 (stay in scope; file discovered-but-out-of-scope issues rather than silently patching them)"
+      - "[COMPLETED] factory/state.py: removed import-time engine binding; added _resolve_db_url (reads FACTORY_DB), lazy get_engine()/_get_session_local() with StaticPool for :memory:, and configure_engine() for tests. DB_PATH + import-time mkdir kept (test_portability contract)."
+      - "[COMPLETED] factory/tests/conftest.py: setup_test_db made function-scoped + autouse; resets the engine per test for true isolation."
+      - "[COMPLETED] Fixed a latent attempt_claim bug exposed by real isolation: stale-lease recovery now reassigns the existing claim row in place instead of inserting a duplicate (violated uq_claim_issue)."
+      - "[DEFERRED] Audit the remaining 32 full-suite failures (test_phase6/7/8/12/13, test_phase5_leakage, test_schemas_phase2) in their own phases; confirmed pre-existing, not state-isolation symptoms."
+    owner: "agent (fix completed 2026-10-05, FF-P21-01)"
     opened_at: "2026-10-05"
-    closed_at: null
+    closed_at: "2026-10-05"

@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List
 from enum import Enum
 
+from factory import state
 from factory.implementation.builder import BuilderCoordinator, BuilderOutput, BuilderInput
 from factory.implementation.patch_apply import apply_changes
 from factory.implementation.repair import (
@@ -63,6 +64,11 @@ class ImplementationRun:
     stall_diagnosis: Optional[Dict[str, Any]] = None
     started_at: str = ""
     completed_at: Optional[str] = None
+    # Id of the durable `state.Run` row backing this run, when persistence is
+    # enabled. May differ from `run_id` when an existing row for the same
+    # (project, issue) is reused (see state.create_or_reset_run). Defaults to
+    # `run_id` so callers can use it unconditionally.
+    persisted_run_id: Optional[str] = None
 
     def __post_init__(self):
         if not self.started_at:
@@ -96,17 +102,59 @@ class ImplementationOrchestrator:
     - Stop conditions
     """
 
-    def __init__(self, builder_coordinator, gateway=None):
+    def __init__(self, builder_coordinator, gateway=None, state_session=None):
         """
         Initialize orchestrator.
 
         Args:
             builder_coordinator: BuilderCoordinator instance
             gateway: model gateway for LLM calls
+            state_session: optional SQLAlchemy session (factory.state). When
+                provided, the run lifecycle (Run row + per-attempt Stage rows)
+                is persisted durably so a run survives process restart and is
+                resumable. When None (the default, and what the unit tests use),
+                the orchestrator behaves exactly as before and persists nothing.
         """
         self.builder_coordinator = builder_coordinator
         self.gateway = gateway
+        self.state_session = state_session
         self.runs: Dict[str, ImplementationRun] = {}
+
+    def _persist(self, fn, *args, **kwargs):
+        """Best-effort durable write. Persistence must never break the live
+        build loop, so any failure is rolled back and swallowed."""
+        if self.state_session is None:
+            return None
+        try:
+            return fn(self.state_session, *args, **kwargs)
+        except Exception:
+            try:
+                self.state_session.rollback()
+            except Exception:
+                pass
+            return None
+
+    def _record_stage(
+        self,
+        run: "ImplementationRun",
+        stage_name: str,
+        status: str,
+        started_at: datetime,
+        error_message: Optional[str] = None,
+        patch_digest: Optional[str] = None,
+    ) -> None:
+        """Persist one Stage execution record for the current attempt."""
+        self._persist(
+            state.record_stage,
+            run_id=run.persisted_run_id,
+            stage_name=stage_name,
+            attempt=run.attempt_number,
+            status=status,
+            started_at=started_at,
+            completed_at=datetime.utcnow(),
+            error_message=error_message,
+            previous_patch_digest=patch_digest,
+        )
 
     def start_implementation(
         self,
@@ -135,7 +183,22 @@ class ImplementationOrchestrator:
             project_id=project_id,
             phase=ImplementationPhase.BUILDING,
             attempt_number=1,
+            persisted_run_id=run_id,
         )
+
+        # Durable Run row (no-op when persistence is disabled). An existing row
+        # for the same (project, issue) is reused, so capture whatever id the
+        # store settled on for subsequent stage/status writes.
+        record = self._persist(
+            state.create_or_reset_run,
+            run_id=run_id,
+            project_id=project_id,
+            issue_number=issue_number,
+            status="implementing",
+            stage="build",
+        )
+        if record is not None:
+            run.persisted_run_id = record.id
 
         self.runs[run_id] = run
         return run
@@ -301,6 +364,9 @@ class ImplementationOrchestrator:
         failure_context: Optional[str] = None
 
         while True:
+            self._persist(state.update_run, run.persisted_run_id,
+                          status="implementing", stage="build", attempts=run.attempt_number)
+            build_started = datetime.utcnow()
             builder_output = self.builder_coordinator.build_from_issue(
                 run_id=run_id,
                 github_adapter=github_adapter,
@@ -314,22 +380,40 @@ class ImplementationOrchestrator:
             if not build_validation["valid"]:
                 # §10: a prohibited/sealed-path violation isn't something a
                 # retry can fix — stop now rather than spend more attempts.
+                self._record_stage(
+                    run, "build", "failed", build_started,
+                    error_message=str(build_validation.get("errors") or build_validation),
+                    patch_digest=builder_output.patch_digest,
+                )
                 self.finalize_run(run, ImplementationPhase.STOPPED, StopCondition.PROTECTED_PATH_TOUCHED)
                 return run
+            self._record_stage(run, "build", "passed", build_started,
+                               patch_digest=builder_output.patch_digest)
 
+            apply_started = datetime.utcnow()
             apply_result = apply_changes(
                 repo_root, builder_output.changes, builder_output.changed_files
             )
             if not apply_result.ok:
+                self._record_stage(run, "apply", "failed", apply_started,
+                                   error_message=str(apply_result.errors))
                 self.finalize_run(run, ImplementationPhase.STOPPED, StopCondition.RESOURCE_EXHAUSTED)
                 return run
 
+            self._persist(state.update_run, run.persisted_run_id, status="verifying", stage="verify")
+            verify_started = datetime.utcnow()
             runner = VerificationRunner(repo_root=repo_root, stage_commands=stage_commands or [])
             pipeline = runner.run()
             gate_report = self.complete_verification_phase(run, pipeline)
 
             if gate_report["gate_passes"]:
+                self._record_stage(run, "verify", "passed", verify_started)
+                self._persist(state.update_run, run.persisted_run_id,
+                              status="closed", stage="verify",
+                              completed_at=datetime.utcnow())
                 return run  # complete_verification_phase already set phase=COMPLETE
+            self._record_stage(run, "verify", "failed", verify_started,
+                               error_message=gate_report.get("reason"))
 
             # Verification failed: record this attempt as a repair cycle,
             # check §12 stop conditions, and either retry or stop.
@@ -398,6 +482,18 @@ class ImplementationOrchestrator:
         run.phase = final_phase
         run.stop_condition = stop_condition
         run.completed_at = datetime.utcnow().isoformat()
+
+        # Persist terminal status: COMPLETE → closed, STOPPED → failed. The
+        # stop condition (if any) is recorded as the run's decision reason so a
+        # later `status`/`report` command can explain why the run stopped.
+        status = "closed" if final_phase == ImplementationPhase.COMPLETE else "failed"
+        self._persist(
+            state.update_run,
+            run.persisted_run_id,
+            status=status,
+            completed_at=datetime.utcnow(),
+            decision_required_reason=(stop_condition.value if stop_condition else None),
+        )
 
     def get_run(self, run_id: str) -> Optional[ImplementationRun]:
         """Get implementation run by ID."""
