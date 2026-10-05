@@ -1,7 +1,7 @@
 [project]
 name = "factory"
 version = "0.1.0"
-description = "Dark Factory: Windows-native autonomous delivery using local LLM (FactoryFlow orchestrator)"
+description = "Dark Factory: Windows-native autonomous delivery, API-first multi-provider LLM with local fallback (FactoryFlow orchestrator)"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
@@ -10,20 +10,28 @@ authors = [
 ]
 
 dependencies = [
-    "typer[all]==0.9.0",
-    "pydantic==2.5.3",
-    "pydantic-settings==2.1.0",
+    # CLI. Typer >= 0.15 (and its modern bundled click) is required for
+    # compatibility with litellm's transitive deps — huggingface-hub needs
+    # click >= 8.4.2, which the old typer 0.9.0 (click < 8.2) conflicted with.
+    "typer>=0.15,<1",
+    "rich>=13,<15",            # used directly (factory/cli.py); previously via typer[all]
+    # In-process multi-provider LLM gateway (D-NEW-005 / FF-P22-01).
+    "litellm>=1.55,<2",
+    # Relaxed from == pins because litellm requires newer pydantic/httpx/jinja2.
+    "pydantic>=2.5,<3",
+    "pydantic-settings>=2.1,<3",
     "sqlalchemy==2.0.23",
-    "jinja2==3.1.2",
+    "jinja2>=3.1,<4",
     "pyyaml==6.0.1",
-    "httpx==0.25.2",
+    "httpx>=0.25,<0.29",
     "requests==2.31.0",
     "aiofiles==23.2.1",
     "opentelemetry-api==1.20.0",
     "opentelemetry-sdk==1.20.0",
     "opentelemetry-exporter-otlp==0.41b0",
     "python-dotenv==1.0.0",
-    "aider-chat==0.35.1",
+    # NOTE: aider-chat==0.35.1 removed — never imported in factory/, and its
+    # old pins (pydantic<2 era) block installing litellm.
 ]
 
 [project.optional-dependencies]
