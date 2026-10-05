@@ -1,0 +1,33 @@
+# .factory-plan/phases/phase-13-critics-decision.yml
+#
+# Per-phase deliverable checklist, generated from New_FEATURE_FACTORY_MASTER_PLAN.md section 16
+# (titles/bullets copied verbatim) and cross-referenced against implementation-status.yml,
+# backlog.yml, dependency-graph.yml, blockers.yml, verification-index.yml (same 2026-10-05 audit).
+# Full per-item evidence lives in implementation-status.yml under the same item ids; this file is
+# the phase-scoped view the master plan's own phase structure asks for.
+#
+# generated_at: "2026-10-05"
+# generated_by: "claude:2026-10-05 (Phase 00 audit)"
+
+
+phase: "13-critics-decision"
+title: "Critics, decision agent, and decision page"
+deliverables:
+  - "isolated critics"
+  - "decision-agent session"
+  - "decision criticality"
+  - "logging and portal display"
+  - "review/override behavior"
+  - "blocked item handling while queue continues"
+overall_status: partially_implemented
+items:
+  - id: FF-P13-01
+    status: partially_implemented
+    blocker_id: null
+    decision_id: null
+    full_evidence: "see implementation-status.yml:FF-P13-01"
+  - id: FF-P13-02
+    status: not_started
+    blocker_id: null
+    decision_id: null
+    full_evidence: "see implementation-status.yml:FF-P13-02"

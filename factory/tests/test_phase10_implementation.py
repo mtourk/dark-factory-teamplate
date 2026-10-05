@@ -16,6 +16,9 @@ Tests for:
 12. Lifecycle phases (building, verifying, repairing, stall_diagnosis, complete, stopped)
 """
 
+import sys
+from unittest.mock import MagicMock
+
 import pytest
 from datetime import datetime
 from pathlib import Path
@@ -37,6 +40,7 @@ from factory.implementation.orchestrator import (
     ImplementationRun,
     ImplementationOrchestrator,
 )
+from factory.sealed_qa.runner import StageCommand
 from factory.sealed_qa.verification import (
     VerificationStage,
     VerificationResult,
@@ -538,6 +542,153 @@ class TestImplementationOrchestrator:
         orchestrator.complete_verification_phase(run, pipeline)
 
         assert run.phase == ImplementationPhase.REPAIRING
+
+
+# ============================================================================
+# Full Loop Tests (run_full_cycle: build → apply → verify → repair → done)
+# ============================================================================
+
+def _marker_check_command(marker_path: str) -> list:
+    """A real subprocess "stage" that passes iff `marker_path` contains PASS."""
+    return [
+        sys.executable,
+        "-c",
+        f"import sys, pathlib; sys.exit(0 if pathlib.Path({marker_path!r}).read_text() == 'PASS' else 1)",
+    ]
+
+
+class TestRunFullCycle:
+    """Test ImplementationOrchestrator.run_full_cycle (the end-to-end loop)."""
+
+    def test_completes_on_first_pass(self, tmp_path):
+        coordinator = BuilderCoordinator()
+        coordinator.build_from_issue = MagicMock(
+            return_value=BuilderOutput(
+                run_id="RUN-FULL-1",
+                issue_number=1,
+                attempt_number=1,
+                changes={"marker.txt": "PASS"},
+                changed_files=["marker.txt"],
+                explanation="Writes marker.txt",
+            )
+        )
+        orchestrator = ImplementationOrchestrator(coordinator)
+
+        run = orchestrator.run_full_cycle(
+            run_id="RUN-FULL-1",
+            github_adapter=MagicMock(),
+            issue_number=1,
+            project_id="test",
+            repo_root=tmp_path,
+            allowed_fix_scope="marker.txt",
+            stage_commands=[
+                StageCommand(VerificationStage.FORMAT, _marker_check_command("marker.txt")),
+            ],
+        )
+
+        assert run.phase == ImplementationPhase.COMPLETE
+        assert (tmp_path / "marker.txt").read_text() == "PASS"
+        coordinator.build_from_issue.assert_called_once()
+
+    def test_stops_on_protected_path(self, tmp_path):
+        coordinator = BuilderCoordinator()
+        coordinator.build_from_issue = MagicMock(
+            return_value=BuilderOutput(
+                run_id="RUN-FULL-2",
+                issue_number=1,
+                attempt_number=1,
+                changes={"DARK_FACTORY_MASTER_PLAN.md": "modified"},
+                changed_files=["DARK_FACTORY_MASTER_PLAN.md"],
+            )
+        )
+        orchestrator = ImplementationOrchestrator(coordinator)
+
+        run = orchestrator.run_full_cycle(
+            run_id="RUN-FULL-2",
+            github_adapter=MagicMock(),
+            issue_number=1,
+            project_id="test",
+            repo_root=tmp_path,
+            stage_commands=[],
+        )
+
+        assert run.phase == ImplementationPhase.STOPPED
+        assert run.stop_condition == StopCondition.PROTECTED_PATH_TOUCHED
+        # Builder output was never written to disk.
+        assert not (tmp_path / "DARK_FACTORY_MASTER_PLAN.md").exists()
+
+    def test_repairs_then_completes(self, tmp_path):
+        """First attempt fails verification; failure_context flows into the
+        second build_from_issue call, which fixes it."""
+        coordinator = BuilderCoordinator()
+
+        def fake_build(**kwargs):
+            attempt = kwargs["attempt_number"]
+            content = "FAIL" if attempt == 1 else "PASS"
+            if attempt > 1:
+                assert kwargs["failure_context"] is not None
+            return BuilderOutput(
+                run_id="RUN-FULL-3",
+                issue_number=1,
+                attempt_number=attempt,
+                changes={"marker.txt": content},
+                changed_files=["marker.txt"],
+            )
+
+        coordinator.build_from_issue = MagicMock(side_effect=fake_build)
+        orchestrator = ImplementationOrchestrator(coordinator)
+
+        run = orchestrator.run_full_cycle(
+            run_id="RUN-FULL-3",
+            github_adapter=MagicMock(),
+            issue_number=1,
+            project_id="test",
+            repo_root=tmp_path,
+            allowed_fix_scope="marker.txt",
+            stage_commands=[
+                StageCommand(VerificationStage.UNIT, _marker_check_command("marker.txt")),
+            ],
+        )
+
+        assert run.phase == ImplementationPhase.COMPLETE
+        assert run.attempt_number == 2
+        assert len(run.repair_outputs) == 1
+        assert coordinator.build_from_issue.call_count == 2
+
+    def test_stops_on_max_attempts_exhausted(self, tmp_path):
+        """Always-failing verification exhausts the 3-attempt budget (§12)."""
+        coordinator = BuilderCoordinator()
+
+        def fake_build(**kwargs):
+            attempt = kwargs["attempt_number"]
+            # Different content each attempt so stall detection (identical
+            # patch digest twice) doesn't fire before MAX_ATTEMPTS_EXHAUSTED.
+            return BuilderOutput(
+                run_id="RUN-FULL-4",
+                issue_number=1,
+                attempt_number=attempt,
+                changes={"marker.txt": f"FAIL-{attempt}"},
+                changed_files=["marker.txt"],
+            )
+
+        coordinator.build_from_issue = MagicMock(side_effect=fake_build)
+        orchestrator = ImplementationOrchestrator(coordinator)
+
+        run = orchestrator.run_full_cycle(
+            run_id="RUN-FULL-4",
+            github_adapter=MagicMock(),
+            issue_number=1,
+            project_id="test",
+            repo_root=tmp_path,
+            allowed_fix_scope="marker.txt",
+            stage_commands=[
+                StageCommand(VerificationStage.UNIT, _marker_check_command("marker.txt")),
+            ],
+        )
+
+        assert run.phase == ImplementationPhase.STOPPED
+        assert run.stop_condition == StopCondition.MAX_ATTEMPTS_EXHAUSTED
+        assert coordinator.build_from_issue.call_count == 3
 
 
 # ============================================================================

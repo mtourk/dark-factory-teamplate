@@ -7,15 +7,33 @@ Orchestrates the full implementation loop:
 3. If failure: Repairer attempts fix (max 3 cycles)
 4. Stall detection and diagnosis
 5. Record evidence
+
+`run_full_cycle()` is the end-to-end entrypoint: given a `factory:ready`
+issue number, it drives claim-free build → apply → verify → (repair)*
+→ complete/stop, calling back into `BuilderCoordinator.build_from_issue()`
+for each attempt (including repair attempts, which are just another build
+call with `failure_context` set) and `VerificationRunner` for real stage
+execution. The lower-level `start_implementation`/`complete_build_phase`/
+`complete_verification_phase` methods below remain usable standalone (the
+existing test suite drives them manually), and `run_full_cycle` is built
+on top of them rather than duplicating their logic.
 """
 
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, Any, Optional, List
 from enum import Enum
 
 from factory.implementation.builder import BuilderCoordinator, BuilderOutput, BuilderInput
-from factory.implementation.repair import RepairCycleTracker, StallDiagnosisSession, StopCondition
+from factory.implementation.patch_apply import apply_changes
+from factory.implementation.repair import (
+    RepairCycleTracker,
+    RepairOutput,
+    StallDiagnosisSession,
+    StopCondition,
+)
+from factory.sealed_qa.runner import StageCommand, VerificationRunner
 from factory.sealed_qa.verification import VerificationPipeline, VerificationGate
 
 
@@ -42,6 +60,7 @@ class ImplementationRun:
     verification_gate: Optional[VerificationGate] = None
     repair_outputs: List[Any] = None
     stop_condition: Optional[StopCondition] = None
+    stall_diagnosis: Optional[Dict[str, Any]] = None
     started_at: str = ""
     completed_at: Optional[str] = None
 
@@ -234,6 +253,133 @@ class ImplementationOrchestrator:
         run.phase = ImplementationPhase.STALL_DIAGNOSIS
         session = StallDiagnosisSession(gateway=self.gateway)
         return session
+
+    def run_full_cycle(
+        self,
+        run_id: str,
+        github_adapter,  # factory.backlog.github_adapter.GitHubAdapter
+        issue_number: int,
+        project_id: str,
+        repo_root: Path,
+        allowed_fix_scope: str = "",
+        stage_commands: Optional[List[StageCommand]] = None,
+    ) -> ImplementationRun:
+        """
+        Drive the full claim → build → apply → verify → repair → complete/stop
+        loop for one issue, end to end.
+
+        Each attempt (including repair attempts) calls
+        `BuilderCoordinator.build_from_issue()` with the growing
+        `failure_context`, so the model doing the repair is the same model
+        that did the original build, now told what failed last time — there
+        is no separate "repairer" LLM call in this codebase yet.
+
+        Args:
+            run_id: factory run ID
+            github_adapter: configured GitHubAdapter (owner/repo already set)
+            issue_number: the `factory:ready` issue to implement
+            project_id: project ID (for the run record)
+            repo_root: working tree to write changes into and run
+                verification commands against
+            allowed_fix_scope: what the builder may change
+            stage_commands: verification stages to actually run (see
+                `factory.sealed_qa.runner.VerificationRunner`); stages with
+                no configured command are not run at all, not assumed to pass
+
+        Returns:
+            The finished ImplementationRun, in COMPLETE or STOPPED phase.
+        """
+        run = self.start_implementation(
+            run_id=run_id,
+            issue_number=issue_number,
+            project_id=project_id,
+            requirement_summary="",  # the issue itself is the source of truth
+            allowed_fix_scope=allowed_fix_scope,
+        )
+
+        tracker = RepairCycleTracker()
+        failure_context: Optional[str] = None
+
+        while True:
+            builder_output = self.builder_coordinator.build_from_issue(
+                run_id=run_id,
+                github_adapter=github_adapter,
+                issue_number=issue_number,
+                attempt_number=run.attempt_number,
+                allowed_fix_scope=allowed_fix_scope,
+                failure_context=failure_context,
+            )
+
+            build_validation = self.complete_build_phase(run, builder_output)
+            if not build_validation["valid"]:
+                # §10: a prohibited/sealed-path violation isn't something a
+                # retry can fix — stop now rather than spend more attempts.
+                self.finalize_run(run, ImplementationPhase.STOPPED, StopCondition.PROTECTED_PATH_TOUCHED)
+                return run
+
+            apply_result = apply_changes(
+                repo_root, builder_output.changes, builder_output.changed_files
+            )
+            if not apply_result.ok:
+                self.finalize_run(run, ImplementationPhase.STOPPED, StopCondition.RESOURCE_EXHAUSTED)
+                return run
+
+            runner = VerificationRunner(repo_root=repo_root, stage_commands=stage_commands or [])
+            pipeline = runner.run()
+            gate_report = self.complete_verification_phase(run, pipeline)
+
+            if gate_report["gate_passes"]:
+                return run  # complete_verification_phase already set phase=COMPLETE
+
+            # Verification failed: record this attempt as a repair cycle,
+            # check §12 stop conditions, and either retry or stop.
+            failure_category = gate_report["summary"]["first_failure"] or "unknown"
+            tracker.add_failure(failure_category)
+
+            repair_output = RepairOutput(
+                run_id=run_id,
+                issue_number=issue_number,
+                attempt_number=run.attempt_number,
+                diagnosis=gate_report["reason"],
+                fix_explanation=builder_output.explanation,
+                hypothesis="",
+                changes=builder_output.changes,
+                changed_files=builder_output.changed_files,
+            )
+            tracker.add_cycle(repair_output)
+            run.repair_outputs.append(repair_output)
+
+            stop_condition = tracker.check_stop_conditions(repair_output)
+            if stop_condition is not None:
+                if stop_condition == StopCondition.STALL_DETECTED:
+                    session = self.start_stall_diagnosis(run)
+                    hypotheses = session.generate_hypotheses(
+                        failure_category=failure_category,
+                        logs=gate_report["reason"],
+                        prior_fixes=[r.fix_explanation for r in run.repair_outputs],
+                    )
+                    run.stall_diagnosis = {
+                        "hypotheses": session.rank_hypotheses(hypotheses),
+                    }
+                self.finalize_run(run, ImplementationPhase.STOPPED, stop_condition)
+                return run
+
+            failure_context = self._summarize_failure_for_builder(gate_report)
+            run.attempt_number += 1
+            run.phase = ImplementationPhase.BUILDING
+
+    @staticmethod
+    def _summarize_failure_for_builder(gate_report: Dict[str, Any]) -> str:
+        """Build the short failure_context string fed to the next build_from_issue call."""
+        summary = gate_report["summary"]
+        failing_stage = summary.get("first_failure") or "unknown stage"
+        failed = [
+            s for s in gate_report["stages"]
+            if s["stage"] == failing_stage
+        ]
+        detail = failed[0] if failed else {}
+        error = detail.get("error") or detail.get("output") or ""
+        return f"Stage '{failing_stage}' failed: {gate_report['reason']}. Details: {error[:500]}"
 
     def finalize_run(
         self,

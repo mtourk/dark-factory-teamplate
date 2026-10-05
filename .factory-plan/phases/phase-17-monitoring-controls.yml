@@ -1,0 +1,28 @@
+# .factory-plan/phases/phase-17-monitoring-controls.yml
+#
+# Per-phase deliverable checklist, generated from New_FEATURE_FACTORY_MASTER_PLAN.md section 16
+# (titles/bullets copied verbatim) and cross-referenced against implementation-status.yml,
+# backlog.yml, dependency-graph.yml, blockers.yml, verification-index.yml (same 2026-10-05 audit).
+# Full per-item evidence lives in implementation-status.yml under the same item ids; this file is
+# the phase-scoped view the master plan's own phase structure asks for.
+#
+# generated_at: "2026-10-05"
+# generated_by: "claude:2026-10-05 (Phase 00 audit)"
+
+
+phase: "17-monitoring-controls"
+title: "Monitoring and controls"
+deliverables:
+  - "admin request table/detail"
+  - "live stage/model/status"
+  - "prompt/response view"
+  - "token/performance/system metrics"
+  - "pause/stop/retry/cancel/reorder/emergency/auto-merge control"
+  - "indefinite retention"
+overall_status: not_started
+items:
+  - id: FF-P17-01
+    status: not_started
+    blocker_id: FB-08
+    decision_id: null
+    full_evidence: "see implementation-status.yml:FF-P17-01"

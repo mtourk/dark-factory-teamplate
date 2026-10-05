@@ -1,0 +1,30 @@
+# .factory-plan/phases/phase-07-bmad-conversation.yml
+#
+# Per-phase deliverable checklist, generated from New_FEATURE_FACTORY_MASTER_PLAN.md section 16
+# (titles/bullets copied verbatim) and cross-referenced against implementation-status.yml,
+# backlog.yml, dependency-graph.yml, blockers.yml, verification-index.yml (same 2026-10-05 audit).
+# Full per-item evidence lives in implementation-status.yml under the same item ids; this file is
+# the phase-scoped view the master plan's own phase structure asks for.
+#
+# generated_at: "2026-10-05"
+# generated_by: "claude:2026-10-05 (Phase 00 audit)"
+
+
+phase: "07-bmad-conversation"
+title: "BMAD conversation service"
+deliverables:
+  - "one-question protocol"
+  - "numbered choices"
+  - "free-text and voice answers"
+  - "delegated-assumption option"
+  - "quality gate"
+  - "completed-response rendering"
+  - "conversation persistence"
+  - "timeouts/recovery"
+overall_status: not_started
+items:
+  - id: FF-P07-01
+    status: not_started
+    blocker_id: FB-04
+    decision_id: D-NEW-004
+    full_evidence: "see implementation-status.yml:FF-P07-01"

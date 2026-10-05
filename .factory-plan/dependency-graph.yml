@@ -1,0 +1,120 @@
+# .factory-plan/dependency-graph.yml
+#
+# Explicit adjacency-list rendering of the dependencies already declared per-item in
+# implementation-status.yml / backlog.yml, plus a phase-level ordering and the decision/blocker
+# edges that gate items but aren't themselves backlog items.
+#
+# generated_at: "2026-10-05"
+# generated_by: "claude:2026-10-05 (Phase 00 audit)"
+
+# --- item -> item dependency edges (depends_on: must reach verified_complete first) ---
+item_graph:
+  FF-P00-01: { depends_on: [] }
+  FF-P00-02: { depends_on: [FF-P00-01] }
+  FF-P01-01: { depends_on: [] }
+  FF-P02-01: { depends_on: [] }
+  FF-P02-02: { depends_on: [FF-P02-01], gated_by_blocker: [FB-05] }
+  FF-P03-01: { depends_on: [], gated_by_blocker: [FB-03], gated_by_decision: [D-NEW-002] }
+  FF-P03-02: { depends_on: [FF-P02-01], gated_by_blocker: [FB-01], gated_by_decision: [D-NEW-003] }
+  FF-P04-01: { depends_on: [FF-P03-01], gated_by_decision: [D-NEW-001, D-NEW-002] }
+  FF-P05-01: { depends_on: [FF-P04-01] }
+  FF-P06-01: { depends_on: [FF-P04-01], gated_by_blocker: [FB-02] }
+  FF-P07-01: { depends_on: [FF-P03-01], gated_by_blocker: [FB-04], gated_by_decision: [D-NEW-004] }
+  FF-P08-01: { depends_on: [FF-P07-01] }
+  FF-P09-01: { depends_on: [FF-P03-02] }
+  FF-P09-02: { depends_on: [FF-P03-02] }
+  FF-P10-01: { depends_on: [FF-P09-02, FF-P02-01], gated_by_blocker: [FB-06] }
+  FF-P11-01: { depends_on: [FF-P02-01], gated_by_blocker: [FB-05] }
+  FF-P12-01: { depends_on: [] }
+  FF-P12-02: { depends_on: [], gated_by_blocker: [FB-07] }
+  FF-P13-01: { depends_on: [FF-P12-02] }
+  FF-P13-02: { depends_on: [FF-P13-01, FF-P04-01] }
+  FF-P14-01: { depends_on: [] }
+  FF-P14-02: { depends_on: [] }
+  FF-P14-03: { depends_on: [FF-P12-02] }
+  FF-P15-01: { depends_on: [FF-P14-03] }
+  FF-P16-01: { depends_on: [FF-P15-01], gated_by_blocker: [FB-08] }
+  FF-P17-01: { depends_on: [FF-P11-01, FF-P04-01], gated_by_blocker: [FB-08] }
+  FF-P18-01: { depends_on: [FF-P11-01, FF-P04-01] }
+  FF-P19-01: { depends_on: [] }
+  FF-P20-01:
+    depends_on:
+      [FF-P03-01, FF-P06-01, FF-P07-01, FF-P08-01, FF-P09-01, FF-P11-01, FF-P13-02, FF-P15-01, FF-P16-01, FF-P17-01]
+
+# --- phase-level ordering (coarser view; a phase is "ready" once every phase it lists under
+#     after is verified_complete at the item level — see item_graph for the precise edges) ---
+phase_order:
+  - phase: "00-audit"
+    after: []
+  - phase: "01-config-portability"
+    after: []
+  - phase: "02-d1-schema"
+    after: []
+  - phase: "03-auth-admin-secrets"
+    after: ["02-d1-schema"]
+  - phase: "04-app-shell"
+    after: ["03-auth-admin-secrets"]
+  - phase: "05-idea-intake"
+    after: ["04-app-shell"]
+  - phase: "06-voice-gemini"
+    after: ["04-app-shell"]
+  - phase: "07-bmad-conversation"
+    after: ["03-auth-admin-secrets"]
+  - phase: "08-live-draft"
+    after: ["07-bmad-conversation"]
+  - phase: "09-repo-selection"
+    after: ["03-auth-admin-secrets"]
+  - phase: "10-cf-provisioning"
+    after: ["09-repo-selection", "02-d1-schema"]
+  - phase: "11-queue-connectivity"
+    after: ["02-d1-schema"]
+  - phase: "12-factoryflow-gateway"
+    after: []
+  - phase: "13-critics-decision"
+    after: ["12-factoryflow-gateway", "04-app-shell"]
+  - phase: "14-sealed-qa-review"
+    after: ["12-factoryflow-gateway"]
+  - phase: "15-github-pr-merge"
+    after: ["14-sealed-qa-review"]
+  - phase: "16-production-deploy"
+    after: ["15-github-pr-merge"]
+  - phase: "17-monitoring-controls"
+    after: ["11-queue-connectivity", "04-app-shell"]
+  - phase: "18-notifications-lifecycle"
+    after: ["11-queue-connectivity", "04-app-shell"]
+  - phase: "19-status-continuation"
+    after: []
+  - phase: "20-full-pilot"
+    after:
+      [
+        "03-auth-admin-secrets", "06-voice-gemini", "07-bmad-conversation", "08-live-draft",
+        "09-repo-selection", "11-queue-connectivity", "13-critics-decision", "15-github-pr-merge",
+        "16-production-deploy", "17-monitoring-controls",
+      ]
+
+# --- decisions that must be made before certain items can leave not_started ---
+decision_gates:
+  D-NEW-001: { gates: [FF-P04-01], status: open }
+  D-NEW-002: { gates: [FF-P03-01, FF-P04-01, FF-P07-01, FF-P09-01, FF-P09-02], status: open }
+  D-NEW-003: { gates: [FF-P03-02], status: open }
+  D-NEW-004: { gates: [FF-P07-01], status: open }
+
+# --- blockers that must be closed before certain items can be verified_complete ---
+blocker_gates:
+  FB-01: { gates: [FF-P03-02], status: open }
+  FB-02: { gates: [FF-P06-01], status: open }
+  FB-03: { gates: [FF-P03-01], status: open }
+  FB-04: { gates: [FF-P07-01], status: open }
+  FB-05: { gates: [FF-P02-02, FF-P11-01], status: open }
+  FB-06: { gates: [FF-P10-01], status: open }
+  FB-07: { gates: [FF-P12-02], status: open }
+  FB-08: { gates: [FF-P16-01, FF-P17-01], status: open }
+
+critical_path: >
+  FF-P03-01 (auth, gated by D-NEW-002 + FB-03) is the single highest-leverage item: it directly
+  unblocks FF-P04-01 (app shell), which in turn unblocks FF-P05-01/06-01/13-02/17-01/18-01.
+  FF-P07-01 (BMAD, gated by D-NEW-004 + FB-04) is the second-highest-leverage item, unblocking
+  FF-P08-01 and feeding FF-P20-01 directly. Both are independent of each other and of
+  FF-P12-02/FB-07 (context-isolation fix) and FF-P14-03/FF-P15-01/FF-P16-01 (review->merge->deploy
+  chain) — these three tracks (auth, BMAD, review-chain) can proceed in parallel once their
+  respective decisions are made.

@@ -1,0 +1,178 @@
+# .factory-plan/decisions.yml
+#
+# Reconciles the existing ADR-001..ADR-007 architecture decisions with
+# New_FEATURE_FACTORY_MASTER_PLAN.md, and defines every new decision id referenced from
+# implementation-status.yml / backlog.yml / blockers.yml (next_action text, D-NEW-*).
+#
+# Status values: accepted (prior ADR, still holds), superseded (prior ADR, overridden by new
+# plan), carried_forward (prior ADR, directly reusable as the implementation of a new-plan
+# requirement), open (new decision, not yet made — human input required).
+#
+# generated_at: "2026-10-05"
+# generated_by: "claude:2026-10-05 (Phase 00 audit)"
+
+decisions:
+  # ---- Reconciled prior ADRs ----
+  - id: ADR-001
+    title: "(original scope — see docs/decisions/ADR-001.md for full text)"
+    status: accepted
+    reconciliation: >
+      Pre-dates the Cloud/Local two-plane split in §1. No conflict with the new plan; treated as
+      historical record of the original single-plane factory design. No action required.
+
+  - id: ADR-002
+    title: "(original scope — see docs/decisions/ADR-002.md for full text)"
+    status: accepted
+    reconciliation: >
+      No direct conflict identified with New_FEATURE_FACTORY_MASTER_PLAN.md. Retained as-is.
+
+  - id: ADR-003
+    title: "Secrets handling (original local-only factory)"
+    status: superseded
+    reconciliation: >
+      §3.4/§14 require secret-store *references* in D1 (integration_secret_refs) with masking in
+      every UI/log surface, not just local-environment secret hygiene. ADR-003's original scope
+      (local-only) is retained as the Local Factory Plane's own secret handling, but the Cloud
+      Product Plane's secret model is new and governed by the decisions below (see D-NEW-003).
+    related: [D-NEW-003]
+
+  - id: ADR-004
+    title: "Profiles system"
+    status: carried_forward
+    reconciliation: >
+      Directly compatible with and reused by the new plan. factory/profiles.py (verified_complete,
+      see implementation-status.yml:FF-P12-01) is the concrete implementation. §9's four project
+      profiles and §2's fixed-environment config are both expressed through this existing
+      mechanism — no redesign needed, only extension (see FF-P01-01, config portability).
+
+  - id: ADR-005
+    title: "Gemini voice boundary — ephemeral-token pattern"
+    status: carried_forward
+    reconciliation: >
+      This ADR's token-minting design is correct and is in fact already implemented
+      (factory/intake/worker/src/gemini.ts:56-99 createEphemeralToken()). It is the architecturally
+      correct precursor to §4's voice boundary. The violation is NOT in this ADR or its token
+      implementation — it is in separate code (getDiscoveryResponseFromGemini(),
+      getDiscoverySystemPrompt(), lines 216-321) that uses the same Gemini integration for BMAD
+      reasoning, which ADR-005 never authorized and which must be removed (tracked as FB-02, not
+      as a decision — it is a bug/violation, not an open design question).
+
+  - id: ADR-006
+    title: "(original scope — see docs/decisions/ADR-006.md for full text)"
+    status: accepted
+    reconciliation: >
+      No direct conflict identified. Retained as-is pending any future need to revisit alongside
+      D-NEW-003 (cloud secrets model).
+
+  - id: ADR-007
+    title: "D1 build_queue design + Cloudflare Custom Domain 'one hostname -> one resource' rule"
+    status: carried_forward
+    reconciliation: >
+      This is the direct, approved precursor to §8 (queue/connectivity) and §10 (Cloudflare
+      resource provisioning). Its build_queue/build_queue_updates schema (schema_phase18.sql) and
+      its one-hostname-one-resource naming rule are adopted as-is by FF-P02-02, FF-P10-01, and
+      FF-P11-01. The gap is purely that it was approved but never built/applied — tracked as
+      FB-05 (schema not applied) and FB-06 (provisioning code not written), not as an open
+      decision. No redesign needed, only execution.
+
+  # ---- New decisions required by the new plan ----
+  - id: D-NEW-001
+    title: "Frontend stack for factory/intake/web: extend existing vanilla JS, or rebuild on a framework?"
+    status: decided
+    chosen_option: "A"
+    chosen_option_text: "Extend vanilla JS in place: keep vanilla JS, add a minimal hash-router and small state store by hand. Lowest migration risk, consistent with 'migration not rewrite' principle."
+    context: >
+      §1 describes a materially richer Cloud Product UI than exists today: portal with auth,
+      BMAD conversation UI with live draft, queue/monitoring/decision pages, voice UI. The current
+      factory/intake/web is plain HTML/CSS/vanilla JS with no router and no component model
+      (confirmed by audit: index.html/app.js/style.css/version.js, no framework present).
+    options:
+      - "A. Extend in place: keep vanilla JS, add a minimal hash-router and small state store by hand. Lowest migration risk, consistent with 'migration not rewrite' principle, but will get harder to maintain as page count grows (hero/chat/success/repo-modal/help-modal -> +portal/+queue/+monitor/+decision)."
+      - "B. Introduce a lightweight framework (e.g. Preact or Svelte, no build-step-heavy React/Next) scoped to new pages only, leaving existing pages as-is until touched."
+      - "C. Full rebuild on a standard SPA framework now, before adding any new page."
+    recommendation: >
+      Option A for the current phase (FF-P04-01), re-evaluate at Phase 09+ if page count/state
+      complexity make hand-rolled routing unmanageable. This matches the master plan's own
+      migration-not-rewrite framing and avoids blocking Phase 04 on a framework-selection debate.
+    decided_by: "Mohammad Tourk (user:2026-10-05)"
+    decided_at: "2026-10-05T00:00:00Z"
+    blocks: [FF-P04-01]
+
+  - id: D-NEW-002
+    title: "Authentication model for the intake portal"
+    status: decided
+    chosen_option: "A"
+    chosen_option_text: "Cloudflare Access (zero-trust) in front of the Worker/Pages: no custom auth code, policy-based, ties identity to Cloudflare's own IdP/email-OTP, simple immediate implementation."
+    context: >
+      FB-03: zero authentication exists anywhere in factory/intake/worker or factory/intake/web.
+      §3.3 requires auth before BMAD/repo-selection/decision flows are reachable; §14 requires
+      CSRF + rate-limiting. This decision gates FF-P03-01, which in turn gates nearly every
+      cloud-facing phase (04-18). User explicitly chose Option A "for now, simple" per session 2026-10-05.
+    options:
+      - "A. Cloudflare Access (zero-trust) in front of the Worker/Pages: no custom auth code, policy-based, but ties identity to Cloudflare's own IdP/email-OTP and is coarser-grained than a per-user D1 users table."
+      - "B. Custom session-cookie auth backed by the D1 users table (§7), with a lightweight password or magic-link flow implemented in the Worker: more code, but matches the D1 data model's users/user_profiles entities directly and gives finer-grained per-user state."
+      - "C. Hybrid: Cloudflare Access for coarse perimeter auth, D1 users table for application-level profile/preference state keyed off the Access-verified identity."
+    recommendation: >
+      (Agent's original recommendation was C. User chose A "for now, simple.") Option A unblocks
+      FF-P03-01 immediately without custom auth infrastructure. Can be upgraded to Option C in a
+      later phase if fine-grained per-user state becomes needed.
+    decided_by: "Mohammad Tourk (user:2026-10-05)"
+    decided_at: "2026-10-05T00:00:00Z"
+    blocks: [FF-P03-01, FF-P04-01, FF-P07-01, FF-P09-01, FF-P09-02]
+
+  - id: D-NEW-003
+    title: "Cloud-side secrets model: reconcile ADR-003/005/006 local-secret handling with §3.4's D1 integration_secret_refs"
+    status: decided
+    chosen_option: "A"
+    chosen_option_text: "Cloudflare Workers Secrets (wrangler secret put) for every cloud-side integration credential, with integration_secret_refs in D1 storing only the secret's logical name/binding, never its value."
+    context: >
+      §3.4 requires the Cloud Product Plane to store only *references* to secrets (never raw
+      values) in the integration_secret_refs D1 table, with masking everywhere in UI/logs. Prior
+      ADRs cover local-environment secret hygiene (factory/deploy/cloudflare_adapter.py's
+      assert_adapter_holds_no_secret()/redact_for_logging(), confirmed real at lines 66-88) but
+      nothing yet defines where the actual secret *values* live for cloud-side integrations
+      (GitHub PAT, Cloudflare API token, Gemini API key) — a secrets manager, Cloudflare
+      Workers Secrets, or an external vault.
+    options:
+      - "A. Cloudflare Workers Secrets (wrangler secret put) for every cloud-side integration credential, with integration_secret_refs in D1 storing only the secret's logical name/binding, never its value."
+      - "B. External secrets manager (e.g. a vault service) with D1 storing a reference key; adds an external dependency but centralizes rotation/audit across both planes."
+    recommendation: >
+      Option A — Workers Secrets is already the natural fit for a Workers-based backend, requires
+      no new external dependency, and is consistent with ADR-003's local-secret-hygiene precedent
+      extended to the cloud side. Revisit only if a future requirement needs cross-service secret
+      sharing beyond what Workers Secrets supports.
+    decided_by: "Mohammad Tourk (user:2026-10-05)"
+    decided_at: "2026-10-05T00:00:00Z"
+    blocks: [FF-P03-02]
+
+  - id: D-NEW-004
+    title: "BMAD engine execution location: Worker-hosted vs. local-Ollama-routed"
+    status: decided
+    chosen_option: "A"
+    chosen_option_text: "Local-Ollama-routed: the Worker proxies each BMAD turn over the existing tunnel to the local Ollama gateway, reusing/activating factory/analysis/bmad.py's self.gateway hook, paired with fixing FB-02's timeout handling (queued retry or explicit busy state, never Gemini substitution)."
+    context: >
+      FB-04: no real BMAD one-question-at-a-time engine exists. factory/analysis/bmad.py has an
+      unused gateway hook; the Worker has no BMAD module at all. This decision must be made before
+      FF-P07-01 can start. Also, Gemini is currently being used as the fallback reasoning engine
+      on Ollama timeout (FB-02, which must be removed).
+    options:
+      - "A. Local-Ollama-routed: the Worker proxies each BMAD turn over the existing tunnel to the local Ollama gateway, reusing/activating factory/analysis/bmad.py's self.gateway hook. Keeps all reasoning on the fixed local hardware (§2), consistent with 'Ollama-only, cloud fallback prohibited' — but reintroduces the same latency/524-timeout risk that originally motivated the Gemini-fallback violation (FB-02), so the timeout-handling redesign in FB-02's remediation must land first or alongside this."
+      - "B. Worker-hosted via Cloudflare Workers AI or another in-Worker small model: removes the tunnel dependency and its latency/timeout risk entirely, but moves BMAD reasoning off the fixed local-only hardware §2 mandates for the Local Factory Plane, which may conflict with 'Ollama-only' intent if that intent is read to cover BMAD specifically (not just code-gen)."
+    recommendation: >
+      Option A, paired with fixing FB-02's timeout handling (queued retry / explicit busy-state,
+      never a cloud-LLM substitution) rather than reaching for Option B's cloud model as a
+      workaround. §2's 'Ollama-only, cloud fallback prohibited' reads as a whole-system constraint,
+      not one scoped only to code generation, so Option B should only be chosen if the user
+      confirms that reading is wrong.
+    decided_by: "Mohammad Tourk (user:2026-10-05)"
+    decided_at: "2026-10-05T00:00:00Z"
+    blocks: [FF-P07-01]
+    related: [FB-02, FB-04]
+
+verification:
+  method: "Four decisions recorded as decided (D-NEW-001, 002, 003, 004), all chosen by user Mohammad Tourk on 2026-10-05."
+  open_decisions_requiring_human_input: []
+  note: >
+    All four new decisions are now decided and recorded with chosen_option, chosen_option_text,
+    decided_by, and decided_at fields populated. ADR-001..007 remain in their prior status
+    (accepted, superseded, or carried_forward) — no changes there.

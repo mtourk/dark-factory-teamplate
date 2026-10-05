@@ -1,0 +1,209 @@
+# .factory-plan/backlog.yml
+#
+# The prioritized execution queue derived from implementation-status.yml (which holds full
+# per-item evidence/schema detail per §0.1). This file answers "what is the next eligible item?"
+# — full detail for any id below lives in implementation-status.yml under the same id.
+#
+# Selection rule (New_FEATURE_FACTORY_MASTER_PLAN.md §0 step 6 / EXECUTION_PROMPT §1):
+# the first unblocked, highest-priority item whose dependencies are all verified_complete.
+#
+# generated_at: "2026-10-05"
+# generated_by: "claude:2026-10-05 (Phase 00 audit)"
+
+queue:
+  - id: FF-P00-01
+    phase: audit
+    priority: critical
+    status: verified_complete
+    dependencies: []
+    blocker_id: null
+  - id: FF-P00-02
+    phase: audit
+    priority: critical
+    status: verified_complete
+    dependencies: [FF-P00-01]
+    blocker_id: null
+  - id: FF-P12-01
+    phase: factoryflow-gateway
+    priority: critical
+    status: verified_complete
+    dependencies: []
+    blocker_id: null
+  - id: FF-P14-01
+    phase: sealed-qa-review
+    priority: critical
+    status: verified_complete
+    dependencies: []
+    blocker_id: null
+  - id: FF-P03-01
+    phase: auth-admin-secrets
+    priority: critical
+    status: not_started
+    dependencies: []
+    blocker_id: FB-03
+    note: "First real unblocked critical-path item. Everything cloud-facing (P04-P18) is gated behind this per §3.3's own fallback clause and FB-03."
+  - id: FF-P03-02
+    phase: auth-admin-secrets
+    priority: critical
+    status: partially_implemented
+    dependencies: [FF-P02-01]
+    blocker_id: FB-01
+  - id: FF-P02-01
+    phase: d1-schema
+    priority: critical
+    status: verified_complete
+    dependencies: []
+    blocker_id: null
+  - id: FF-P02-02
+    phase: d1-schema
+    priority: critical
+    status: not_started
+    dependencies: [FF-P02-01]
+    blocker_id: FB-05
+  - id: FF-P01-01
+    phase: config-portability
+    priority: high
+    status: not_started
+    dependencies: []
+    blocker_id: null
+  - id: FF-P04-01
+    phase: app-shell
+    priority: high
+    status: not_started
+    dependencies: [FF-P03-01]
+    blocker_id: null
+  - id: FF-P14-02
+    phase: sealed-qa-review
+    priority: high
+    status: implemented_unverified
+    dependencies: []
+    blocker_id: null
+  - id: FF-P14-03
+    phase: sealed-qa-review
+    priority: critical
+    status: partially_implemented
+    dependencies: [FF-P12-02]
+    blocker_id: null
+  - id: FF-P12-02
+    phase: factoryflow-gateway
+    priority: high
+    status: implemented_unverified
+    dependencies: []
+    blocker_id: FB-07
+  - id: FF-P05-01
+    phase: idea-intake
+    priority: high
+    status: partially_implemented
+    dependencies: [FF-P04-01]
+    blocker_id: null
+  - id: FF-P06-01
+    phase: voice-gemini
+    priority: critical
+    status: blocked
+    dependencies: [FF-P04-01]
+    blocker_id: FB-02
+  - id: FF-P07-01
+    phase: bmad-conversation
+    priority: critical
+    status: not_started
+    dependencies: [FF-P03-01]
+    blocker_id: FB-04
+  - id: FF-P08-01
+    phase: live-draft
+    priority: high
+    status: partially_implemented
+    dependencies: [FF-P07-01]
+    blocker_id: null
+  - id: FF-P09-01
+    phase: repo-selection
+    priority: high
+    status: partially_implemented
+    dependencies: [FF-P03-02]
+    blocker_id: null
+  - id: FF-P09-02
+    phase: repo-selection
+    priority: high
+    status: partially_implemented
+    dependencies: [FF-P03-02]
+    blocker_id: null
+  - id: FF-P10-01
+    phase: cf-provisioning
+    priority: high
+    status: not_started
+    dependencies: [FF-P09-02, FF-P02-01]
+    blocker_id: FB-06
+  - id: FF-P11-01
+    phase: queue-connectivity
+    priority: critical
+    status: not_started
+    dependencies: [FF-P02-01]
+    blocker_id: FB-05
+  - id: FF-P13-01
+    phase: critics-decision
+    priority: high
+    status: partially_implemented
+    dependencies: [FF-P12-02]
+    blocker_id: null
+  - id: FF-P13-02
+    phase: critics-decision
+    priority: high
+    status: not_started
+    dependencies: [FF-P13-01, FF-P04-01]
+    blocker_id: null
+  - id: FF-P15-01
+    phase: github-pr-merge
+    priority: critical
+    status: partially_implemented
+    dependencies: [FF-P14-03]
+    blocker_id: null
+  - id: FF-P16-01
+    phase: production-deploy
+    priority: critical
+    status: partially_implemented
+    dependencies: [FF-P15-01]
+    blocker_id: FB-08
+  - id: FF-P17-01
+    phase: monitoring-controls
+    priority: high
+    status: not_started
+    dependencies: [FF-P11-01, FF-P04-01]
+    blocker_id: FB-08
+  - id: FF-P18-01
+    phase: notifications-lifecycle
+    priority: medium
+    status: not_started
+    dependencies: [FF-P11-01, FF-P04-01]
+    blocker_id: null
+  - id: FF-P19-01
+    phase: status-continuation
+    priority: critical
+    status: partially_implemented
+    dependencies: []
+    blocker_id: null
+  - id: FF-P20-01
+    phase: full-pilot
+    priority: medium
+    status: not_started
+    dependencies:
+      - FF-P03-01
+      - FF-P06-01
+      - FF-P07-01
+      - FF-P08-01
+      - FF-P09-01
+      - FF-P11-01
+      - FF-P13-02
+      - FF-P15-01
+      - FF-P16-01
+      - FF-P17-01
+    blocker_id: null
+
+next_eligible_item: FF-P03-01
+next_eligible_item_rationale: >
+  FF-P00-01/02, FF-P12-01, and FF-P14-01 are already verified_complete (prior session's CLI-wiring
+  work plus this audit itself). FF-P02-01 (schema audit) is also verified_complete as a mapping
+  exercise. The next item whose dependencies are fully satisfied and that is not itself blocked
+  is FF-P03-01 (authentication) — it has no dependencies, is priority critical, and per
+  New_FEATURE_FACTORY_MASTER_PLAN.md §3.3's own fallback clause its absence is treated as a
+  blocking security item that gates nearly every cloud-facing phase (04 through 18). FB-03 records
+  this blocker; resolving it (a user/architecture decision: Cloudflare Access vs. custom users
+  table — see decisions.yml D-NEW-002) is the literal next action.

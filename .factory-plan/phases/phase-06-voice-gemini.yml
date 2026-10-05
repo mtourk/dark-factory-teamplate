@@ -1,0 +1,30 @@
+# .factory-plan/phases/phase-06-voice-gemini.yml
+#
+# Per-phase deliverable checklist, generated from New_FEATURE_FACTORY_MASTER_PLAN.md section 16
+# (titles/bullets copied verbatim) and cross-referenced against implementation-status.yml,
+# backlog.yml, dependency-graph.yml, blockers.yml, verification-index.yml (same 2026-10-05 audit).
+# Full per-item evidence lives in implementation-status.yml under the same item ids; this file is
+# the phase-scoped view the master plan's own phase structure asks for.
+#
+# generated_at: "2026-10-05"
+# generated_by: "claude:2026-10-05 (Phase 00 audit)"
+
+
+phase: "06-voice-gemini"
+title: "Gemini voice integration"
+deliverables:
+  - "microphone permission and state"
+  - "transcription with automatic language detection"
+  - "editable transcript"
+  - "no raw audio storage"
+  - "local response text to TTS"
+  - "no Gemini reasoning"
+  - "API-key/session security"
+  - "voice error and retry handling"
+overall_status: blocked
+items:
+  - id: FF-P06-01
+    status: blocked
+    blocker_id: FB-02
+    decision_id: null
+    full_evidence: "see implementation-status.yml:FF-P06-01"

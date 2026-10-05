@@ -122,7 +122,7 @@ class SourceArtifact(BaseModel):
     artifact_id: str
     artifact_type: str
     source_phase: int = Field(..., ge=1, le=16)
-    hash_sha256: str = Field(..., regex=r"^[a-f0-9]{64}$")
+    hash_sha256: str = Field(..., pattern=r"^[a-f0-9]{64}$")
     description: Optional[str] = None
 
 
@@ -141,16 +141,16 @@ class PolicyDecision(BaseModel):
 
 class ContextManifest(BaseModel):
     """Metadata for context package (§6.3)."""
-    manifest_id: str = Field(..., regex=r"^manifest-[a-z0-9-]{16}$")
+    manifest_id: str = Field(..., pattern=r"^manifest-[a-z0-9-]{16}$")
     project_id: str
-    run_id: str = Field(..., regex=r"^RUN-[a-z0-9]{8}$")
+    run_id: str = Field(..., pattern=r"^RUN-[a-z0-9]{8}$")
     role: FactoryRole
     session_id: str
     source_artifacts: List[SourceArtifact]
     exclusions: List[ContextExclusion]
     policy_decision: PolicyDecision
     timestamp: datetime
-    manifest_hash: str = Field(..., regex=r"^[a-f0-9]{64}$")
+    manifest_hash: str = Field(..., pattern=r"^[a-f0-9]{64}$")
 
 
 # ============================================================================
@@ -202,20 +202,20 @@ class GateStatus(BaseModel):
 class ReviewVerdict(BaseModel):
     """Independent review result (§11)."""
     status: str  # approved, rejected, decision_required
-    reviewed_sha: str = Field(..., regex=r"^[a-f0-9]{40}$")
+    reviewed_sha: str = Field(..., pattern=r"^[a-f0-9]{40}$")
     reviewed_by_role: str = "reviewer"
     findings: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class EvidenceManifest(BaseModel):
     """Complete traceability record (§16)."""
-    evidence_id: str = Field(..., regex=r"^evidence-[a-z0-9-]{16}$")
+    evidence_id: str = Field(..., pattern=r"^evidence-[a-z0-9-]{16}$")
     project_id: str
     run_id: str
     issue_number: int
-    base_sha: str = Field(..., regex=r"^[a-f0-9]{40}$")
-    head_sha: str = Field(..., regex=r"^[a-f0-9]{40}$")
-    deployed_sha: str = Field(..., regex=r"^[a-f0-9]{40}$")
+    base_sha: str = Field(..., pattern=r"^[a-f0-9]{40}$")
+    head_sha: str = Field(..., pattern=r"^[a-f0-9]{40}$")
+    deployed_sha: str = Field(..., pattern=r"^[a-f0-9]{40}$")
     requirements: List[Dict[str, Any]]
     gates: GateStatus
     context_packages: List[Dict[str, Any]]
@@ -242,7 +242,7 @@ class EvidenceManifest(BaseModel):
 
 class DecisionRecord(BaseModel):
     """Architecture decision record (ADR)."""
-    adr_id: str = Field(..., regex=r"^ADR-\d{3}$")
+    adr_id: str = Field(..., pattern=r"^ADR-\d{3}$")
     title: str = Field(..., min_length=5, max_length=200)
     date: str  # ISO date
     status: str  # PROPOSED, APPROVED, SUPERSEDED, IMPLEMENTED

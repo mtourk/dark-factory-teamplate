@@ -1,0 +1,28 @@
+# .factory-plan/phases/phase-11-queue-connectivity.yml
+#
+# Per-phase deliverable checklist, generated from New_FEATURE_FACTORY_MASTER_PLAN.md section 16
+# (titles/bullets copied verbatim) and cross-referenced against implementation-status.yml,
+# backlog.yml, dependency-graph.yml, blockers.yml, verification-index.yml (same 2026-10-05 audit).
+# Full per-item evidence lives in implementation-status.yml under the same item ids; this file is
+# the phase-scoped view the master plan's own phase structure asks for.
+#
+# generated_at: "2026-10-05"
+# generated_by: "claude:2026-10-05 (Phase 00 audit)"
+
+
+phase: "11-queue-connectivity"
+title: "Cloud-local queue and connectivity"
+deliverables:
+  - "D1-backed jobs API"
+  - "outbound local polling"
+  - "atomic claim/lease/heartbeat/recovery"
+  - "laptop offline queueing"
+  - "Cloudflare Tunnel health and optional callback"
+  - "one active run"
+overall_status: not_started
+items:
+  - id: FF-P11-01
+    status: not_started
+    blocker_id: FB-05
+    decision_id: null
+    full_evidence: "see implementation-status.yml:FF-P11-01"

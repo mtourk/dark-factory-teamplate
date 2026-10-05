@@ -20,7 +20,7 @@ from typing import Dict, Any, Optional, List
 from enum import Enum
 
 
-class AcceptanceCritiaType(str, Enum):
+class AcceptanceCriaType(str, Enum):
     """Type of acceptance criterion."""
     OBSERVABLE = "observable"  # User-visible behavior
     PERFORMANCE = "performance"  # Latency, throughput

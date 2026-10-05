@@ -98,6 +98,32 @@ class TestProfileSerialization:
         assert restored.cloudflare.project_name == "widgets-prod"
         assert restored.protected_paths == ["custom/protected.md"]
 
+    def test_target_branch_and_verification_commands_default(self):
+        """A profile built without these fields gets safe, documented defaults."""
+        profile = Profile(name="acme", target_repo=TargetRepository.from_url("https://github.com/acme/widgets"))
+        assert profile.target_branch == "main"
+        assert profile.verification_commands == {}
+
+    def test_target_branch_and_verification_commands_round_trip(self):
+        profile = Profile(
+            name="acme",
+            target_repo=TargetRepository.from_url("https://github.com/acme/widgets"),
+            target_branch="develop",
+            verification_commands={"unit": ["pytest"], "lint": ["npm", "run", "lint"]},
+        )
+        restored = Profile.from_yaml_dict(profile.to_yaml_dict())
+        assert restored.target_branch == "develop"
+        assert restored.verification_commands == {"unit": ["pytest"], "lint": ["npm", "run", "lint"]}
+
+    def test_from_yaml_dict_defaults_when_keys_missing(self):
+        """Loading an older profile file (written before these fields existed) still works."""
+        minimal = Profile(name="acme", target_repo=TargetRepository.from_url("https://github.com/acme/widgets")).to_yaml_dict()
+        del minimal["target_branch"]
+        del minimal["verification_commands"]
+        restored = Profile.from_yaml_dict(minimal)
+        assert restored.target_branch == "main"
+        assert restored.verification_commands == {}
+
 
 # ============================================================================
 # Profile storage: list / load / save / create
@@ -130,6 +156,25 @@ class TestProfileStorage:
         content = path.read_text()
         assert "token" not in content.lower()
         assert "secret" not in content.lower()
+
+    def test_create_profile_passes_through_target_branch_and_verification_commands(self, profiles_dir):
+        created = create_profile(
+            name="my-project",
+            target_repo_url="https://github.com/acme/my-project",
+            target_branch="develop",
+            verification_commands={"unit": ["pytest", "-q"]},
+        )
+        assert created.target_branch == "develop"
+        assert created.verification_commands == {"unit": ["pytest", "-q"]}
+
+        loaded = load_profile("my-project")
+        assert loaded.target_branch == "develop"
+        assert loaded.verification_commands == {"unit": ["pytest", "-q"]}
+
+    def test_create_profile_defaults_target_branch_to_main(self, profiles_dir):
+        created = create_profile(name="my-project", target_repo_url="https://github.com/acme/my-project")
+        assert created.target_branch == "main"
+        assert created.verification_commands == {}
 
 
 # ============================================================================

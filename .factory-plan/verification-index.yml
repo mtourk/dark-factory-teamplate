@@ -1,0 +1,263 @@
+# .factory-plan/verification-index.yml
+#
+# Maps backlog item ids to concrete verification evidence: test files, commands, and their
+# last-known pass/fail state. Per §0.2, "verified_complete" requires an entry here with a passing
+# command, not just a plausible-looking test file name.
+#
+# generated_at: "2026-10-05"
+# generated_by: "claude:2026-10-05 (Phase 00 audit)"
+
+verification_entries:
+  - item_id: FF-P00-01
+    verification_commands: []
+    verification_evidence: "This audit itself (four parallel Explore-agent sweeps covered in implementation-status.yml); no automated test applies to an audit deliverable."
+    last_verified_at: "2026-10-05"
+    result: n/a_documentation_deliverable
+
+  - item_id: FF-P00-02
+    verification_commands: []
+    verification_evidence: "Cross-reference of docs/decisions/ADR-001..007, docs/threat-model.md, DARK_FACTORY_MASTER_PLAN.md, IMPLEMENTATION_CHECKLIST.md against the new plan; captured in decisions.yml and blockers.yml."
+    last_verified_at: "2026-10-05"
+    result: n/a_documentation_deliverable
+
+  - item_id: FF-P12-01
+    verification_commands:
+      - "python -m pytest factory/tests/test_profiles.py -v"
+      - "python -m pytest factory/tests/test_workspace.py -v"
+    verification_evidence: >
+      Prior session (2026-10-05, CLI-wiring task): 12 tests across the two files, all passing.
+      factory/profiles.py and factory/implementation/workspace.py are real, working, dynamically
+      profile-driven (not hardcoded to one project).
+    last_verified_at: "2026-10-05"
+    result: passed
+    test_count: 12
+
+  - item_id: FF-P14-01
+    verification_commands:
+      - "python -m pytest factory/tests/test_sealed_qa_runner.py -v"
+    verification_evidence: >
+      11 tests, all passing. factory/sealed_qa/runner.py's VerificationRunner correctly executes
+      real subprocesses, enforces canonical stage ordering, and distinguishes deterministic vs.
+      non-deterministic failures (test_sealed_qa_runner.py:66-93).
+    last_verified_at: "2026-10-05"
+    result: passed
+    test_count: 11
+
+  - item_id: FF-P19-01
+    verification_commands:
+      - "python -m pytest factory/tests/test_cli_run.py -v"
+    verification_evidence: >
+      15 tests, all passing. factory/cli.py's `run` command is confirmed profile-driven end to
+      end (TestRunProfileDrivenDispatch), handles sync/dry-run/--once correctly, and reports
+      run_full_cycle exceptions per-issue without aborting the batch
+      (test_run_full_cycle_exception_is_reported_and_does_not_abort_remaining_issues).
+      This is direct evidence for status/continuation behavior at the CLI layer specifically;
+      it does NOT cover the Cloud Product Plane's status-event/notification model (§12-§13),
+      which remains not_started — see FF-P17-01/FF-P18-01.
+    last_verified_at: "2026-10-05"
+    result: passed
+    test_count: 15
+
+  - item_id: FF-P02-01
+    verification_commands:
+      - "manual schema read: factory/intake/worker/schema.sql, schema_phase18.sql"
+    verification_evidence: >
+      Mapping exercise only (not a test suite) — confirmed which of the ~30 §7 logical entities
+      exist as live tables (conversations, messages, pending_profiles) vs. unapplied
+      (ollama_requests, build_queue, build_queue_updates) vs. entirely undefined (users,
+      user_profiles, integration_secret_refs, ideas, idea_drafts, and ~20 more). Marked
+      verified_complete as an audit deliverable (the mapping is accurate and complete), NOT as a
+      claim that the schema itself is complete — see FF-P02-02 for the actual schema-completion
+      work.
+    last_verified_at: "2026-10-05"
+    result: audit_mapping_confirmed_accurate
+
+  - item_id: FF-P14-02
+    verification_commands:
+      - "python -m pytest factory/review/independent.py -k test (no dedicated runner invocation found)"
+    verification_evidence: >
+      factory/review/independent.py has correct SHA-binding logic (ReviewContext.validate_shas()
+      lines 95-100; ReviewGate.can_auto_merge()/cannot_merge_reason() lines 305-344) and its own
+      test file exists, but ReviewBroker is never imported by orchestrator.py — the logic is
+      implemented_unverified in the sense that it is untested *in integration* (no test exercises
+      it as part of a real run_full_cycle call). Unit-level tests in its own test file were not
+      re-run this session; status reflects integration gap, not unit-test absence.
+    last_verified_at: "2026-10-05"
+    result: unit_tests_exist_integration_unverified
+
+  - item_id: FF-P12-02
+    verification_commands: []
+    verification_evidence: >
+      No test asserts builder.py's prompt excludes raw conversation text — this is precisely the
+      gap FB-07 tracks. A regression test for this (asserting the assembled builder prompt never
+      contains literal discovery-message text) is listed as required remediation in blockers.yml
+      FB-07 and does not yet exist.
+    last_verified_at: "2026-10-05"
+    result: no_test_exists
+
+  - item_id: FF-P03-01
+    verification_commands: []
+    verification_evidence: "No code exists to test (not_started); see blockers.yml FB-03."
+    last_verified_at: "2026-10-05"
+    result: not_applicable_not_started
+
+  - item_id: FF-P03-02
+    verification_commands: []
+    verification_evidence: "Partial GitHub-secrets-instruction code exists (factory/deploy/target_repo_setup.py:60-133) but prints manual instructions rather than executing; no automated verification applies. See FB-01."
+    last_verified_at: "2026-10-05"
+    result: not_applicable_manual_step
+
+  - item_id: FF-P04-01
+    verification_commands: []
+    verification_evidence: "Not started; depends on FF-P03-01 and decisions D-NEW-001/D-NEW-002."
+    last_verified_at: "2026-10-05"
+    result: not_applicable_not_started
+
+  - item_id: FF-P05-01
+    verification_commands: []
+    verification_evidence: >
+      factory/intake/web/app.js updateIssueDraft() (375-399) exists and runs but uses crude
+      keyword heuristics, not a real BMAD-informed draft; no test suite covers factory/intake/web
+      at all (plain JS, no test runner configured in that directory).
+    last_verified_at: "2026-10-05"
+    result: no_test_infrastructure_exists
+
+  - item_id: FF-P06-01
+    verification_commands: []
+    verification_evidence: "Blocked by FB-02; the only 'working' code is the violation itself (gemini.ts:216-321), which must be removed, not verified as-is."
+    last_verified_at: "2026-10-05"
+    result: not_applicable_blocked
+
+  - item_id: FF-P07-01
+    verification_commands: []
+    verification_evidence: "No real one-question BMAD engine exists; factory/analysis/bmad.py's heuristic parser is not the protocol described in §5.1-5.4. See FB-04/D-NEW-004."
+    last_verified_at: "2026-10-05"
+    result: not_applicable_not_started
+
+  - item_id: FF-P08-01
+    verification_commands: []
+    verification_evidence: "Depends on FF-P07-01; no live-draft-update mechanism exists beyond the same crude heuristics cited under FF-P05-01."
+    last_verified_at: "2026-10-05"
+    result: not_applicable_dependency_not_started
+
+  - item_id: FF-P09-01
+    verification_commands: []
+    verification_evidence: >
+      factory/intake/worker/src/github.ts createProjectRepository() (65-117) is real and
+      functional for repo creation; no automated test exercises it against the live GitHub API
+      (would require network/credentials), and no test covers the 'select existing repo' path at
+      all.
+    last_verified_at: "2026-10-05"
+    result: no_automated_test_network_dependent
+
+  - item_id: FF-P09-02
+    verification_commands: []
+    verification_evidence: "Same as FF-P09-01; ensureLabelsExist() (192-234) is real but milestones/backlog/CI-init are not implemented, so there is nothing further to verify yet."
+    last_verified_at: "2026-10-05"
+    result: no_automated_test_network_dependent
+
+  - item_id: FF-P10-01
+    verification_commands: []
+    verification_evidence: "Not started; see FB-06."
+    last_verified_at: "2026-10-05"
+    result: not_applicable_not_started
+
+  - item_id: FF-P11-01
+    verification_commands: []
+    verification_evidence: "Not started; see FB-05 (schema not applied, nothing live to poll)."
+    last_verified_at: "2026-10-05"
+    result: not_applicable_not_started
+
+  - item_id: FF-P13-01
+    verification_commands:
+      - "no dedicated runner invocation found for factory/analysis/critics.py's own test file"
+    verification_evidence: >
+      factory/analysis/critics.py's CriticRole enum (34-41) and RequirementChallengeBroker
+      (111-161) are correctly structured scaffolding, imported only by their own test file, never
+      wired into any run. Unit tests may pass in isolation but there is zero integration coverage.
+    last_verified_at: "2026-10-05"
+    result: unit_tests_exist_integration_unverified
+
+  - item_id: FF-P13-02
+    verification_commands: []
+    verification_evidence: "Not started; depends on FF-P13-01 and FF-P04-01."
+    last_verified_at: "2026-10-05"
+    result: not_applicable_not_started
+
+  - item_id: FF-P14-03
+    verification_commands: []
+    verification_evidence: >
+      orchestrator.py's run_full_cycle (300-369) goes straight from verification-pass to
+      `return run` (331-332) with no independent-review call — §15 step 14 is dead code from the
+      pipeline's perspective, confirmed by reading the full method body. No test exercises an
+      independent-review gate inside run_full_cycle because none exists to exercise.
+    last_verified_at: "2026-10-05"
+    result: confirmed_gap_no_test_possible
+
+  - item_id: FF-P15-01
+    verification_commands: []
+    verification_evidence: >
+      factory/github_integration/auto_merge.py AutoMergeGate.validate_prerequisites() (78-166) is
+      correct and likely unit-tested in isolation, but factory/backlog/github_adapter.py
+      enable_auto_merge() (316-340) calls PUT .../pulls/{pr}/merge without the optional sha=
+      parameter — confirmed by direct code read, a correctness gap in exact-SHA enforcement at
+      the real API call site. No test currently asserts sha= is passed (would need to, once fixed).
+    last_verified_at: "2026-10-05"
+    result: confirmed_correctness_gap
+
+  - item_id: FF-P16-01
+    verification_commands: []
+    verification_evidence: >
+      factory/deploy/cloudflare_adapter.py verify_deployed_version()/run_health_check()
+      (211-291) are real, working post-deploy checks — but the deploy step itself is human-gated
+      per FB-08, so there is no automated end-to-end deploy verification possible yet.
+    last_verified_at: "2026-10-05"
+    result: partial_automated_verification_human_gated_step_remains
+
+  - item_id: FF-P17-01
+    verification_commands: []
+    verification_evidence: >
+      factory/monitor/web is a narrow read-only Ollama-health viewer (confirmed by its own code
+      comment), not the §12 Factory Monitor; zero admin controls present to test. Not yet deployed
+      live per docs/operations/INTAKE_DEPLOYMENT_PLAYBOOK.md.
+    last_verified_at: "2026-10-05"
+    result: not_applicable_not_started
+
+  - item_id: FF-P18-01
+    verification_commands: []
+    verification_evidence: "Not started; no notification code exists anywhere in the audited paths."
+    last_verified_at: "2026-10-05"
+    result: not_applicable_not_started
+
+  - item_id: FF-P20-01
+    verification_commands: []
+    verification_evidence: "Not started; gated on every item in its dependencies list reaching verified_complete first (see dependency-graph.yml)."
+    last_verified_at: "2026-10-05"
+    result: not_applicable_not_started
+
+  - item_id: FF-P01-01
+    verification_commands: []
+    verification_evidence: >
+      factory/profiles.py (verified_complete under FF-P12-01) already supports multiple named
+      profiles; §2's fixed-environment config (Windows paths, Ollama-only, concurrency=1) is not
+      yet explicitly validated/enforced as profile fields — no test asserts the environment
+      constraints are read from or validated against a profile.
+    last_verified_at: "2026-10-05"
+    result: no_test_exists
+
+summary:
+  verified_complete_with_passing_tests: [FF-P12-01, FF-P14-01, FF-P19-01]
+  verified_complete_as_audit_deliverable_not_code: [FF-P00-01, FF-P00-02, FF-P02-01]
+  implemented_unverified_integration_gap: [FF-P14-02, FF-P13-01]
+  confirmed_active_violations_no_passing_verification_possible_until_fixed: [FF-P12-02, FF-P06-01]
+  confirmed_correctness_gaps: [FF-P15-01]
+  not_started_no_automated_verification_applicable: [FF-P03-01, FF-P04-01, FF-P07-01, FF-P08-01, FF-P10-01, FF-P11-01, FF-P13-02, FF-P18-01, FF-P20-01, FF-P02-02, FF-P01-01]
+  partially_implemented_network_dependent_untestable_locally: [FF-P09-01, FF-P09-02, FF-P03-02, FF-P16-01, FF-P17-01]
+  total_passing_automated_tests_this_project: 38
+  note: >
+    The 38 figure matches the prior session's confirmed count (test_profiles.py +5,
+    test_workspace.py 7 new, test_sealed_qa_runner.py 11 new, test_cli_run.py 15 new) and is the
+    only hard automated-test evidence currently backing any verified_complete claim in this
+    project. Every other verified_complete marking in implementation-status.yml is explicitly an
+    audit-deliverable claim (the audit itself was done thoroughly and accurately), never a claim
+    that the audited subject's underlying feature is complete.

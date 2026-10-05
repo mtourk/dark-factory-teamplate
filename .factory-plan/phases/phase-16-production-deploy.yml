@@ -1,0 +1,28 @@
+# .factory-plan/phases/phase-16-production-deploy.yml
+#
+# Per-phase deliverable checklist, generated from New_FEATURE_FACTORY_MASTER_PLAN.md section 16
+# (titles/bullets copied verbatim) and cross-referenced against implementation-status.yml,
+# backlog.yml, dependency-graph.yml, blockers.yml, verification-index.yml (same 2026-10-05 audit).
+# Full per-item evidence lives in implementation-status.yml under the same item ids; this file is
+# the phase-scoped view the master plan's own phase structure asks for.
+#
+# generated_at: "2026-10-05"
+# generated_by: "claude:2026-10-05 (Phase 00 audit)"
+
+
+phase: "16-production-deploy"
+title: "Production deployment and recovery"
+deliverables:
+  - "deploy from main"
+  - "production checks"
+  - "last-known-good"
+  - "quarantine"
+  - "recovery"
+  - "stop new merges on unknown state"
+overall_status: partially_implemented
+items:
+  - id: FF-P16-01
+    status: partially_implemented
+    blocker_id: FB-08
+    decision_id: null
+    full_evidence: "see implementation-status.yml:FF-P16-01"

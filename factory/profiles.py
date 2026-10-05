@@ -116,6 +116,14 @@ class Profile:
     business_requirements_source: Optional[str] = None
     protected_paths: List[str] = field(default_factory=list)
     notes: str = ""
+    # Branch `factory run` checks out and verifies against (factory/implementation/workspace.py).
+    target_branch: str = "main"
+    # Per-project verification commands, keyed by short VerificationStage name
+    # (e.g. "unit", "lint", "build" — see factory.sealed_qa.verification.VerificationStage
+    # and factory.sealed_qa.runner.stage_commands_from_profile_config). Different target
+    # repos use different stacks (npm/pytest/cargo/...), so this has no safe default —
+    # stages with no configured command here are simply not run (§11 honesty note).
+    verification_commands: Dict[str, List[str]] = field(default_factory=dict)
 
     def to_yaml_dict(self) -> Dict[str, Any]:
         return {
@@ -125,6 +133,8 @@ class Profile:
             "business_requirements_source": self.business_requirements_source,
             "protected_paths": self.protected_paths,
             "notes": self.notes,
+            "target_branch": self.target_branch,
+            "verification_commands": self.verification_commands,
         }
 
     @classmethod
@@ -146,6 +156,8 @@ class Profile:
             business_requirements_source=data.get("business_requirements_source"),
             protected_paths=data.get("protected_paths") or [],
             notes=data.get("notes", ""),
+            target_branch=data.get("target_branch") or "main",
+            verification_commands=data.get("verification_commands") or {},
         )
 
 
@@ -189,6 +201,8 @@ def create_profile(
     business_requirements_source: Optional[str] = None,
     protected_paths: Optional[List[str]] = None,
     notes: str = "",
+    target_branch: str = "main",
+    verification_commands: Optional[Dict[str, List[str]]] = None,
 ) -> Profile:
     """Convenience constructor: build a Profile from a GitHub URL and persist it."""
     profile = Profile(
@@ -198,6 +212,8 @@ def create_profile(
         business_requirements_source=business_requirements_source,
         protected_paths=protected_paths or [],
         notes=notes,
+        target_branch=target_branch,
+        verification_commands=verification_commands or {},
     )
     save_profile(profile)
     return profile

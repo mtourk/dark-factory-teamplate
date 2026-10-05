@@ -1,0 +1,32 @@
+# .factory-plan/phases/phase-00-audit.yml
+#
+# Per-phase deliverable checklist, generated from New_FEATURE_FACTORY_MASTER_PLAN.md section 16
+# (titles/bullets copied verbatim) and cross-referenced against implementation-status.yml,
+# backlog.yml, dependency-graph.yml, blockers.yml, verification-index.yml (same 2026-10-05 audit).
+# Full per-item evidence lives in implementation-status.yml under the same item ids; this file is
+# the phase-scoped view the master plan's own phase structure asks for.
+#
+# generated_at: "2026-10-05"
+# generated_by: "claude:2026-10-05 (Phase 00 audit)"
+
+
+phase: "00-audit"
+title: "Repository and deployment audit"
+deliverables:
+  - "inspect existing portal, Worker, D1, migrations, routes, authentication, monitoring, local factory, GitHub workflows, Cloudflare resources"
+  - "map existing code to this plan"
+  - "create implementation status and dependency graph"
+  - "do not delete working implementation merely to match preferred structure"
+  - "identify migration strategy"
+overall_status: verified_complete
+items:
+  - id: FF-P00-01
+    status: verified_complete
+    blocker_id: null
+    decision_id: null
+    full_evidence: "see implementation-status.yml:FF-P00-01"
+  - id: FF-P00-02
+    status: verified_complete
+    blocker_id: null
+    decision_id: null
+    full_evidence: "see implementation-status.yml:FF-P00-02"

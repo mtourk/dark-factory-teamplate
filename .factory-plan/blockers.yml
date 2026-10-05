@@ -1,0 +1,211 @@
+# .factory-plan/blockers.yml
+#
+# Formal blocker registry. Every blocker_id referenced from implementation-status.yml and
+# backlog.yml is defined here with: what it blocks, severity, evidence, and the exact
+# remediation that clears it. Per New_FEATURE_FACTORY_MASTER_PLAN.md §0.2, no item may be marked
+# verified_complete while a blocker it depends on remains open.
+#
+# generated_at: "2026-10-05"
+# generated_by: "claude:2026-10-05 (Phase 00 audit)"
+
+blockers:
+  - id: FB-01
+    title: "Leaked, unrotated Cloudflare API token committed to git history"
+    severity: critical
+    category: security
+    status: open
+    discovered_in: "docs audit (CREATE_ROUTE_API.md)"
+    evidence:
+      - "docs/CREATE_ROUTE_API.md, committed at 10fd1ce, contains a live-looking Cloudflare API token in plaintext"
+    blocks:
+      - FF-P03-02
+    impact: >
+      Any Cloudflare account-level action (DNS, Worker deploy, D1, KV, R2 provisioning per §10)
+      is at risk until this token is confirmed revoked/rotated. Secret-store-reference discipline
+      (§3.4, §14) cannot be claimed as satisfied while a raw secret sits in git history.
+    remediation:
+      - "Rotate the token in the Cloudflare dashboard immediately (independent of any code change)."
+      - "Scrub docs/CREATE_ROUTE_API.md of the literal token value (git history rewrite is optional/out of scope; rotation makes the leaked value worthless)."
+      - "Replace all remaining plaintext-secret references in docs/ with secret-store-reference placeholders per §3.4."
+    owner: "human (requires Cloudflare dashboard access — not an agent-executable step)"
+    opened_at: "2026-10-05"
+    closed_at: null
+
+  - id: FB-02
+    title: "Gemini used as primary reasoning/BMAD-answering engine in text-chat fallback"
+    severity: critical
+    category: architecture-violation
+    status: open
+    discovered_in: "factory/intake/worker/src/gemini.ts audit"
+    evidence:
+      - "factory/intake/worker/src/gemini.ts:216-284 getDiscoveryResponseFromGemini() calls Gemini to generate the next BMAD question/response"
+      - "factory/intake/worker/src/gemini.ts:301-321 getDiscoverySystemPrompt() instructs Gemini to act as the discovery AI"
+      - "This path activates whenever local Ollama inference times out (524), which per docs/operations/INTAKE_DEPLOYMENT_PLAYBOOK.md is the common case on the current hardware"
+    blocks:
+      - FF-P06-01
+    impact: >
+      Direct, currently-realized violation of §4.2 (Gemini voice boundary: transcription + TTS
+      only) and critical mistake #3 (Gemini must never answer BMAD questions). Every discovery
+      conversation routed through this fallback has had its requirements effectively authored by
+      Gemini, not by the local BMAD engine — a correctness and provenance problem for every issue
+      filed through intake while this path is live, not just a future risk.
+    remediation:
+      - "Delete getDiscoveryResponseFromGemini()/getDiscoverySystemPrompt() reasoning path entirely; Gemini integration must be reduced to Live API transcription + TTS per §4."
+      - "Replace the Ollama-timeout fallback with: (a) a queued retry, or (b) surfacing a clear 'local model busy' state to the user — never a cloud-LLM substitution."
+      - "Add a CI/lint check (or code-review gate) that flags any new call from worker code into a Gemini text-generation endpoint outside src/gemini.ts's token-minting function."
+    owner: "agent (code change) — no external approval needed beyond normal review"
+    opened_at: "2026-10-05"
+    closed_at: null
+
+  - id: FB-03
+    title: "No authentication exists anywhere in the intake worker or web UI"
+    severity: critical
+    category: security
+    status: open
+    discovered_in: "factory/intake/worker/src/index.ts audit"
+    evidence:
+      - "factory/intake/worker/src/index.ts:80-104 route dispatcher has zero auth checks on any route"
+      - "factory/intake/worker/src/index.ts Env interface (35-45) has no auth binding (no session secret, no identity provider config)"
+      - "factory/intake/web has no login screen, no session/cookie handling, no CSRF token anywhere in app.js"
+    blocks:
+      - FF-P04-01
+      - FF-P07-01
+      - FF-P09-01
+      - FF-P09-02
+    impact: >
+      §3.3 requires portal auth before any BMAD/repo-selection/decision flow is reachable; §14
+      requires CSRF + rate-limiting. Currently the entire intake surface is open to anyone who can
+      reach the Worker URL — including the GitHub-repo-creation and (once built) Cloudflare
+      resource-provisioning actions, which are account-mutating. This is the single highest-impact
+      blocker: nearly every Phase 04-18 item is gated behind it.
+    remediation:
+      - "Resolve decisions.yml:D-NEW-002 (auth model choice) first — this blocker cannot be worked until that decision is made."
+      - "Implement chosen auth (session cookie + CSRF token, or Cloudflare Access) across every mutating route in index.ts."
+      - "Add rate-limiting middleware (Cloudflare native rate-limiting rules, or a KV-backed token bucket) to intake endpoints."
+    owner: "agent, pending human decision on D-NEW-002"
+    opened_at: "2026-10-05"
+    closed_at: null
+
+  - id: FB-04
+    title: "BMAD engine location/design not decided — real engine does not exist"
+    severity: critical
+    category: design-gap
+    status: open
+    discovered_in: "factory/analysis/bmad.py audit"
+    evidence:
+      - "factory/analysis/bmad.py:110-206 discover_from_issue() is pure heuristic string-parsing of an already-filed GitHub issue — not an interactive one-question-at-a-time engine"
+      - "factory/analysis/bmad.py:100-108 self.gateway is accepted in __init__ but never called anywhere in the class"
+      - "No code anywhere implements §5.1-5.4's one-question-at-a-time protocol, numbered-options-plus-free-text format, or the mandatory delegated-assumption option"
+    blocks:
+      - FF-P07-01
+    impact: >
+      This is the structural heart of the product (§1's 'BMAD conversation UI', §5 in full) and it
+      does not exist in working form. FF-P07-01 cannot move past not_started until a design
+      decision is made: run BMAD inference in the Cloudflare Worker (near the UI, via a hosted
+      small model or Workers AI) vs. route every BMAD turn back to the local Ollama gateway over
+      the existing tunnel (reusing factory/analysis/bmad.py's gateway hook, finally wiring it up).
+    remediation:
+      - "Record the location decision in decisions.yml (new decision id, e.g. D-NEW-004) before writing code."
+      - "If local-Ollama-routed: wire bmad.py's unused self.gateway to a real model call implementing the one-question protocol; replace discover_from_issue()'s heuristics with it."
+      - "If Worker-hosted: design a new module in factory/intake/worker/src/ implementing the same protocol, and retire bmad.py's role to local-only fallback/dev-testing."
+      - "Either way: implement the mandatory 'use your best judgment and assumptions, stop asking' delegated option and live draft update (ties to FF-P08-01)."
+    owner: "human decision + agent implementation"
+    opened_at: "2026-10-05"
+    closed_at: null
+
+  - id: FB-05
+    title: "D1 queue/history schema written but never applied to the live database"
+    severity: high
+    category: deployment-gap
+    status: resolved
+    discovered_in: "factory/intake/worker/schema.sql, schema_phase18.sql audit"
+    evidence:
+      - "schema.sql defines 4 live tables (conversations, messages, pending_profiles, ollama_requests); ollama_requests confirmed unapplied to the live D1 instance"
+      - "schema_phase18.sql defines build_queue and build_queue_updates as design-only migrations, never run against the live database — RESOLVED 2026-10-05 by: npx wrangler d1 execute dark-factory-intake --file=./schema_phase18.sql --remote (7 queries executed, 11 rows written, final bookmark recorded)"
+      - "Verification (2026-10-05): SELECT name FROM sqlite_master WHERE type='table' confirmed 7 tables now present (including build_queue, build_queue_updates)"
+    blocks: []
+    impact: >
+      FORMERLY: §15's autonomous delivery workflow and §12's monitoring/queue views had no real
+      backing table to read from or write to until these migrations were applied.
+      NOW RESOLVED: build_queue and build_queue_updates are live and ready for queue_runner.py
+      (ADR-007) and the autonomous queue coordination logic in later phases.
+    remediation:
+      - "✅ COMPLETED: Applied schema_phase18.sql to production D1 database via wrangler (2026-10-05)"
+    owner: "resolved (applied 2026-10-05)"
+    opened_at: "2026-10-05"
+    closed_at: "2026-10-05"
+
+  - id: FB-06
+    title: "No Cloudflare resource/DNS provisioning capability exists anywhere in the codebase"
+    severity: high
+    category: missing-capability
+    status: open
+    discovered_in: "factory/deploy/cloudflare_adapter.py audit"
+    evidence:
+      - "factory/deploy/cloudflare_adapter.py:160-178 build_wrangler_command() only targets an already-existing wrangler project; it has no create-D1/create-KV/create-R2/create-DNS-record logic"
+      - "docs/operations/CLOUDFLARE_DNS_AUTOMATION.md is pseudocode/design-only, never implemented"
+      - "docs/decisions/ADR-007.md defines the 'one hostname -> one resource' rule as approved but unbuilt"
+    blocks:
+      - FF-P10-01
+    impact: >
+      §10's entire resource-provisioning requirement (idempotent Worker/D1/KV/R2/DNS creation with
+      app-name.mtourk.com collision-suffix naming) has zero implementation. New-repo-driven builds
+      (§9's 'new repo' path) cannot reach a deployed, DNS-addressable state without this.
+    remediation:
+      - "Implement a CloudflareProvisioner module following ADR-007's one-hostname-one-resource rule, using the Cloudflare API (not just wrangler CLI) for idempotent create-or-get semantics on Worker/D1/KV/R2/DNS."
+      - "Implement the app-name.mtourk.com collision-suffix naming scheme and record every created resource in the project_resources D1 table (§7)."
+      - "Add a dry-run mode that reports what would be created without mutating the account, for safe testing."
+    owner: "agent"
+    opened_at: "2026-10-05"
+    closed_at: null
+
+  - id: FB-07
+    title: "builder.py feeds raw discovery conversation into code-gen prompt, bypassing ContextBroker"
+    severity: critical
+    category: architecture-violation
+    status: open
+    discovered_in: "factory/implementation/builder.py audit"
+    evidence:
+      - "factory/implementation/builder.py:44 BuilderInput.raw_conversation field"
+      - "factory/implementation/builder.py:490-495 _build_user_prompt() appends every raw discovery Q&A message directly into the builder's prompt"
+      - "factory/context/broker.py's isolation/exclusion logic (196-311) is never called from builder.py (confirmed by grep across factory/implementation/)"
+    blocks:
+      - FF-P12-02
+    impact: >
+      Directly violates §11 (context isolation) and critical mistake #10 (no raw conversation/
+      private-memory sharing between roles). The builder role currently receives the full,
+      unfiltered discovery transcript — including anything a user said that the per-role exclusion
+      list (ContextBroker._compute_exclusions, broker.py:291-311) is specifically designed to keep
+      out of the builder's context.
+    remediation:
+      - "Remove BuilderInput.raw_conversation entirely; replace its use in _build_user_prompt() with a ContextBroker.assemble_role_context() call scoped to the builder role."
+      - "Add a regression test asserting the builder's assembled prompt never contains the literal discovery-conversation message text, only the derived requirements/acceptance-criteria artifacts ContextBroker is designed to pass through."
+      - "Wire ContextBroker into the orchestrator's call path generally (currently unreferenced outside its own test file) so this isolation is enforced structurally, not just at this one call site."
+    owner: "agent"
+    opened_at: "2026-10-05"
+    closed_at: null
+
+  - id: FB-08
+    title: "Autonomous deploys blocked by environment permission classifier; human must run Wrangler/Pages steps manually"
+    severity: high
+    category: environment-constraint
+    status: open
+    discovered_in: "docs/operations/INTAKE_DEPLOYMENT_PLAYBOOK.md audit"
+    evidence:
+      - "docs/operations/INTAKE_DEPLOYMENT_PLAYBOOK.md documents that Pages/Worker/D1-migration deploy steps are currently blocked for autonomous execution by a permission classifier and must be run by a human"
+      - "factory/deploy/target_repo_setup.py:60-107 configure_github_secrets() only prints gh secret set commands for manual execution (_provide_user_instructions, 109-133) rather than running them"
+    blocks:
+      - FF-P16-01
+      - FF-P17-01
+    impact: >
+      §15's fully-autonomous delivery workflow (step culminating in production deploy) cannot
+      complete end-to-end without a human in the loop at the deploy step, contradicting the
+      product vision's autonomy goal for this stage. This is an environment/tooling constraint,
+      not a code defect.
+    remediation:
+      - "Determine the exact permission boundary causing the block (likely: no stored Cloudflare API token with deploy scope available to the agent's execution environment) and whether a scoped, human-approved credential can be issued to the automation identity."
+      - "Until resolved: keep the explicit human handoff step in the workflow (as target_repo_setup.py already does for secrets) rather than attempting to silently bypass it — this is intentional friction (§19 critical mistake #16, no admin bypass), not a bug to route around."
+      - "Document this as an accepted, human-gated step in the Definition of Done (§20) rather than claiming full autonomy prematurely."
+    owner: "human (environment/credential policy decision)"
+    opened_at: "2026-10-05"
+    closed_at: null

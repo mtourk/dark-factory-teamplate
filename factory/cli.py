@@ -29,8 +29,9 @@ implicitly when exactly one profile exists. See profiles/README.md.
 """
 
 import sys
+import time
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import typer
 from rich.console import Console
@@ -38,7 +39,6 @@ from rich.table import Table
 
 from factory.state import init_db, get_db_session
 from factory.config import load_config
-from factory.models import Project, Run
 from factory.profiles import (
     NoActiveProfileError,
     Profile,
@@ -48,6 +48,12 @@ from factory.profiles import (
     load_profile,
     resolve_active_profile,
 )
+from factory.backlog.github_adapter import GitHubAdapter
+from factory.implementation.builder import BuilderCoordinator
+from factory.implementation.orchestrator import ImplementationOrchestrator, ImplementationPhase
+from factory.implementation.workspace import WorkspaceError, ensure_workspace
+from factory.intake.local_sync import LocalProfileSync
+from factory.sealed_qa.runner import stage_commands_from_profile_config
 
 app = typer.Typer(
     name="factory",
@@ -182,22 +188,71 @@ def express(
     console.print("[yellow]Express mode not yet implemented (Phase 4 backlog scheduler)[/yellow]")
 
 
+FACTORY_READY_LABEL = "factory:ready"
+
+
+def _sync_pending_profiles() -> None:
+    """
+    Pull in any repos the user chose to have created fresh via the intake
+    worker's web UI at issue-submission time (factory/intake/local_sync.py),
+    turning each into a local profile *before* profile resolution runs — so
+    `run` can pick a just-created project the same way it picks a
+    pre-existing one, with no separate manual step. Best-effort: a worker
+    that's unreachable is a warning, not a reason to abort a run against an
+    already-known profile.
+    """
+    try:
+        synced = LocalProfileSync().sync_all()
+        if synced:
+            console.print(f"[green]✓[/green] Synced {synced} new profile(s) from intake worker")
+    except Exception as e:
+        console.print(f"[yellow]⚠[/yellow] Pending-profile sync skipped: {e}")
+
+
+def _print_run_result(run_result) -> None:
+    """Print an ImplementationRun's outcome (shared by `run` for each issue processed)."""
+    if run_result.phase == ImplementationPhase.COMPLETE:
+        console.print(
+            f"  [green]✓ COMPLETE[/green] (attempt {run_result.attempt_number}, "
+            f"{len(run_result.repair_outputs)} repair cycle(s))"
+        )
+    else:
+        reason = run_result.stop_condition.value if run_result.stop_condition else "unknown"
+        console.print(f"  [red]✗ STOPPED[/red]: {reason} (attempt {run_result.attempt_number})")
+
+
 @app.command()
 def run(
     ctx: typer.Context,
     once: bool = typer.Option(False, "--Once", help="Process one item and exit"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Simulate without modifying state"),
+    sync_profiles: bool = typer.Option(
+        True,
+        "--sync-profiles/--no-sync-profiles",
+        help="Pull in repos created via the intake web UI before resolving the active profile",
+    ),
 ) -> None:
     """
-    Execute factory workflow: claim → implement → deploy → close.
+    Execute factory workflow: claim → implement → verify → repair → close.
 
-    Runs continuously selecting eligible items from the active profile's backlog.
+    Nothing here is hardcoded to one project (master plan §17): which repo
+    `run` acts on is decided entirely by the active profile, resolved the
+    same way as every other command (--profile flag > FACTORY_PROFILE env
+    var > the one profile on disk). That covers both cases from the
+    intake flow — the user picking an existing repo, or choosing "create a
+    new repo" while filing the issue — because the latter only differs in
+    that its profile did not exist on disk until `_sync_pending_profiles()`
+    (just above) pulled it in from the intake worker a moment ago.
 
     Options:
-    - run: continuous loop until queue empty or stop requested
+    - run: process every eligible issue in the active profile's repo
     - run --Once: process one item and exit
     - run --dry-run: show what would happen, no changes
+    - run --no-sync-profiles: skip the intake-worker pending-profile sync
     """
+    if sync_profiles:
+        _sync_pending_profiles()
+
     active_profile = _resolve_profile_or_exit(ctx)
     console.print("[bold blue]Factory Run[/bold blue]")
     console.print(f"[cyan]Profile:[/cyan] {active_profile.name} ({active_profile.target_repo.repo_string})")
@@ -205,7 +260,64 @@ def run(
         console.print("[cyan]Mode: once (process one item, exit)[/cyan]")
     if dry_run:
         console.print("[cyan]Mode: dry-run (simulation only)[/cyan]")
-    console.print("[yellow]Factory run not yet implemented (Phase 4+ backlog, scheduler)[/yellow]")
+
+    github = GitHubAdapter(
+        owner=active_profile.target_repo.owner,
+        repo=active_profile.target_repo.name,
+    )
+    try:
+        eligible = github.list_issues(state="open", labels=[FACTORY_READY_LABEL])
+    except Exception as e:
+        console.print(f"[red]✗[/red] Failed to list issues for {active_profile.target_repo.repo_string}: {e}")
+        raise typer.Exit(code=1)
+
+    if not eligible:
+        console.print(f"[yellow]No '{FACTORY_READY_LABEL}' issues found.[/yellow]")
+        return
+
+    if dry_run:
+        console.print(f"Would process {len(eligible)} issue(s):")
+        for issue in eligible[:1] if once else eligible:
+            console.print(f"  #{issue.number}: {issue.title}")
+        return
+
+    try:
+        workspace_path = ensure_workspace(active_profile)
+    except WorkspaceError as e:
+        console.print(f"[red]✗[/red] Workspace preparation failed: {e}")
+        raise typer.Exit(code=1)
+    console.print(f"[cyan]Workspace:[/cyan] {workspace_path}")
+
+    try:
+        stage_commands = stage_commands_from_profile_config(active_profile.verification_commands)
+    except ValueError as e:
+        console.print(f"[red]✗[/red] Invalid verification_commands in profile '{active_profile.name}': {e}")
+        raise typer.Exit(code=1)
+    if not stage_commands:
+        console.print(
+            "[yellow]⚠[/yellow] No verification_commands configured on this profile — "
+            "the gate will pass with zero stages run. See 'factory profile show'."
+        )
+
+    orchestrator = ImplementationOrchestrator(BuilderCoordinator())
+    to_process = eligible[:1] if once else eligible
+
+    for issue in to_process:
+        run_id = f"RUN-{active_profile.name}-{issue.number}-{int(time.time())}"
+        console.print(f"[bold]→ Issue #{issue.number}[/bold]: {issue.title} ({run_id})")
+        try:
+            result = orchestrator.run_full_cycle(
+                run_id=run_id,
+                github_adapter=github,
+                issue_number=issue.number,
+                project_id=active_profile.name,
+                repo_root=workspace_path,
+                stage_commands=stage_commands,
+            )
+        except Exception as e:
+            console.print(f"  [red]✗ ERROR[/red]: {e}")
+            continue
+        _print_run_result(result)
 
 
 @app.command()
@@ -433,13 +545,38 @@ def profile_create(
     cloudflare_project: Optional[str] = typer.Option(
         None, "--cloudflare-project", help="Cloudflare/Wrangler project name, if deploying there"
     ),
+    target_branch: str = typer.Option("main", "--target-branch", help="Branch 'factory run' checks out and verifies"),
+    verify: List[str] = typer.Option(
+        [],
+        "--verify",
+        help="Verification stage command, as 'stage=cmd arg1 arg2' (repeatable). "
+        "stage is a VerificationStage name, e.g. 'unit=pytest' or 'lint=npm run lint'.",
+    ),
 ) -> None:
     """Create a new profile and persist it to profiles/<name>.yml."""
+    import shlex
+
+    verification_commands = {}
+    for entry in verify:
+        if "=" not in entry:
+            console.print(f"[red]✗[/red] --verify must be 'stage=cmd', got: {entry}")
+            raise typer.Exit(code=1)
+        stage_key, _, cmd_str = entry.partition("=")
+        verification_commands[stage_key.strip()] = shlex.split(cmd_str)
+
+    try:
+        stage_commands_from_profile_config(verification_commands)  # validate stage names up front
+    except ValueError as e:
+        console.print(f"[red]✗[/red] {e}")
+        raise typer.Exit(code=1)
+
     try:
         new_profile = create_profile(
             name=name,
             target_repo_url=repo,
             cloudflare_project_name=cloudflare_project,
+            target_branch=target_branch,
+            verification_commands=verification_commands,
         )
     except ValueError as e:
         console.print(f"[red]✗[/red] {e}")
@@ -480,9 +617,11 @@ def profile_show(name: str = typer.Argument(..., help="Profile name")) -> None:
 
     console.print(f"[bold blue]Profile[/bold blue]: {p.name}")
     console.print(f"  Target repo: {p.target_repo.repo_string} ({p.target_repo.url})")
+    console.print(f"  Target branch: {p.target_branch}")
     console.print(f"  Cloudflare project: {p.cloudflare.project_name or '(none)'}")
     console.print(f"  Business requirements source: {p.business_requirements_source or '(none)'}")
     console.print(f"  Protected paths: {p.protected_paths or '(defaults only)'}")
+    console.print(f"  Verification commands: {p.verification_commands or '(none configured — gate runs 0 stages)'}")
     if p.notes:
         console.print(f"  Notes: {p.notes}")
 
