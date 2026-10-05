@@ -10,6 +10,16 @@ VERSION = "4"
 DEPLOYED_AT = "2026-10-04T20:35:00+02:00"
 OLLAMA_MODEL = "qwen2.5:7b-instruct"
 OLLAMA_URL = "https://ollama.mtourk.com"
+# FF-P03-01 / D-NEW-002 (Option A: Cloudflare Access only).
+# TODO: Set up a Cloudflare Access Application in the dashboard for
+# factory.mtourk.com (and the Worker's own route, if accessed directly),
+# then replace this placeholder with that Application's AUD tag
+# (Access > Applications > <app> > Overview > "Application Audience (AUD) Tag").
+CLOUDFLARE_ACCESS_AUD = "TODO-set-after-creating-access-application"
+# The `<team>` in `<team>.cloudflareaccess.com` — used to fetch the JWKS that
+# verifies Access JWT signatures. TODO: confirm this matches the Zero Trust
+# team domain once Access is configured.
+CLOUDFLARE_ACCESS_TEAM_DOMAIN = "mtourk"
 
 [[d1_databases]]
 binding = "DB"

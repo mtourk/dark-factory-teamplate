@@ -17,6 +17,13 @@
  * - GET /ollama/status - live Ollama status (loaded models + any in-flight request)
  * - GET /ollama/history - paginated history of past Ollama requests
  *
+ * Auth (FF-P03-01, D-NEW-002 Option A — Cloudflare Access only):
+ * - Mutating routes (POST /conversations, /projects, /messages, /file-issue,
+ *   /text-response) require a verified Cf-Access-Jwt-Assertion header.
+ * - Read-only/health routes (GET /version, /ollama/status, /ollama/history)
+ *   stay public so uptime checks don't need an Access identity.
+ * - See verifyAccessJwt() below. No per-user D1 profile lookup yet (Phase 04+).
+ *
  * Secrets (Cloudflare Worker environment):
  * - GITHUB_REPO_CREATE_TOKEN: narrow GitHub PAT for repo creation
  * - GEMINI_API_KEY: Gemini API key (never exposed to browser)
@@ -42,6 +49,11 @@ export interface Env {
   OLLAMA_MODEL?: string;
   VERSION?: string;
   DEPLOYED_AT?: string;
+  // FF-P03-01 / D-NEW-002 (Option A: Cloudflare Access only).
+  // AUD of the Cloudflare Access Application fronting this Worker/Pages (dashboard-provided).
+  CLOUDFLARE_ACCESS_AUD: string;
+  // Team domain (the `<team>` in `<team>.cloudflareaccess.com`) used to fetch the Access JWKS.
+  CLOUDFLARE_ACCESS_TEAM_DOMAIN?: string;
 }
 
 // Each frontend gets its own hostname (one-hostname-one-resource, see ADR-007 §3).
@@ -60,6 +72,174 @@ function resolveCorsOrigin(request: Request): string {
   return ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
 }
 
+// ============ Cloudflare Access authentication (FF-P03-01, D-NEW-002 Option A) ============
+//
+// Option A: Cloudflare Access fronts the Worker/Pages and attaches a signed JWT
+// (`Cf-Access-Jwt-Assertion`) to every request it routes through. We verify that
+// JWT ourselves (rather than trusting the header blindly) so a request that
+// reaches the Worker directly — bypassing Access — can't forge the header.
+//
+// This phase only verifies identity (signature + audience + expiry) and allows
+// the request through. It does NOT look up or create a per-user D1 profile
+// (that's Phase 04+) and does NOT do token masking (that's Phase 03-02).
+//
+// Reference: https://developers.cloudflare.com/cloudflare-one/identity/authorization-policy/verify-jwt/
+
+interface AccessJwtResult {
+  valid: boolean;
+  email?: string;
+  error?: string;
+}
+
+type RouteMatcher = { method: string; pattern: RegExp };
+
+// Mutating routes: must present a verified Cloudflare Access identity.
+const ROUTES_REQUIRING_AUTH: RouteMatcher[] = [
+  { method: "POST", pattern: /^\/conversations$/ },
+  { method: "POST", pattern: /^\/projects$/ },
+  { method: "POST", pattern: /^\/conversations\/([^/]+)\/file-issue$/ },
+  { method: "POST", pattern: /^\/conversations\/([^/]+)\/messages$/ },
+  { method: "POST", pattern: /^\/conversations\/([^/]+)\/text-response$/ },
+];
+
+// Read-only / health-check routes: intentionally left open (e.g. for uptime
+// monitors that can't present an Access identity). Listed explicitly so the
+// "public by default" set is visible, not just implied by omission.
+const ROUTES_PUBLIC: RouteMatcher[] = [
+  { method: "GET", pattern: /^\/version$/ },
+  { method: "GET", pattern: /^\/ollama\/status$/ },
+  { method: "GET", pattern: /^\/ollama\/history$/ },
+];
+
+function matchesRoute(method: string, path: string, routes: RouteMatcher[]): boolean {
+  return routes.some((route) => route.method === method && route.pattern.test(path));
+}
+
+function routeRequiresAuth(method: string, path: string): boolean {
+  if (matchesRoute(method, path, ROUTES_PUBLIC)) {
+    return false;
+  }
+  return matchesRoute(method, path, ROUTES_REQUIRING_AUTH);
+}
+
+// Cached across requests within the same Worker isolate so we don't fetch the
+// JWKS on every request. Cold starts always re-fetch.
+let cachedAccessJwks: { keys: JsonWebKey[] } | null = null;
+let cachedAccessJwksAt = 0;
+const ACCESS_JWKS_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+async function fetchAccessJwks(env: Env): Promise<{ keys: JsonWebKey[] }> {
+  const now = Date.now();
+  if (cachedAccessJwks && now - cachedAccessJwksAt < ACCESS_JWKS_CACHE_TTL_MS) {
+    return cachedAccessJwks;
+  }
+
+  if (!env.CLOUDFLARE_ACCESS_TEAM_DOMAIN) {
+    throw new Error("CLOUDFLARE_ACCESS_TEAM_DOMAIN not configured");
+  }
+
+  const certsUrl = `https://${env.CLOUDFLARE_ACCESS_TEAM_DOMAIN}.cloudflareaccess.com/cdn-cgi/access/certs`;
+  const response = await fetch(certsUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch Access JWKS (${response.status})`);
+  }
+
+  const jwks = (await response.json()) as { keys: JsonWebKey[] };
+  cachedAccessJwks = jwks;
+  cachedAccessJwksAt = now;
+  return jwks;
+}
+
+function base64UrlToUint8Array(base64Url: string): Uint8Array {
+  const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+  const padding = base64.length % 4 === 0 ? "" : "=".repeat(4 - (base64.length % 4));
+  const binary = atob(base64 + padding);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+function base64UrlDecodeToString(base64Url: string): string {
+  return new TextDecoder().decode(base64UrlToUint8Array(base64Url));
+}
+
+/**
+ * Verify the `Cf-Access-Jwt-Assertion` header Cloudflare Access attaches to
+ * every request it routes through. Checks signature (via the Access team's
+ * published JWKS), audience (CLOUDFLARE_ACCESS_AUD), and expiry.
+ */
+async function verifyAccessJwt(request: Request, env: Env): Promise<AccessJwtResult> {
+  const token = request.headers.get("Cf-Access-Jwt-Assertion");
+  if (!token) {
+    return { valid: false, error: "Missing Cf-Access-Jwt-Assertion header" };
+  }
+
+  if (!env.CLOUDFLARE_ACCESS_AUD) {
+    return { valid: false, error: "CLOUDFLARE_ACCESS_AUD not configured on Worker" };
+  }
+
+  const parts = token.split(".");
+  if (parts.length !== 3) {
+    return { valid: false, error: "Malformed JWT (expected 3 segments)" };
+  }
+  const [headerB64, payloadB64, signatureB64] = parts;
+
+  let header: { kid?: string; alg?: string };
+  let payload: { aud?: string | string[]; exp?: number; email?: string };
+  try {
+    header = JSON.parse(base64UrlDecodeToString(headerB64));
+    payload = JSON.parse(base64UrlDecodeToString(payloadB64));
+  } catch {
+    return { valid: false, error: "Malformed JWT (header/payload not valid JSON)" };
+  }
+
+  try {
+    const jwks = await fetchAccessJwks(env);
+    const matchingKey = jwks.keys.find((k) => (k as { kid?: string }).kid === header.kid);
+    if (!matchingKey) {
+      return { valid: false, error: "No matching Access signing key for JWT kid" };
+    }
+
+    const cryptoKey = await crypto.subtle.importKey(
+      "jwk",
+      matchingKey,
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      false,
+      ["verify"]
+    );
+
+    const signature = base64UrlToUint8Array(signatureB64);
+    const signedInput = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
+    const signatureValid = await crypto.subtle.verify(
+      "RSASSA-PKCS1-v1_5",
+      cryptoKey,
+      signature,
+      signedInput
+    );
+
+    if (!signatureValid) {
+      return { valid: false, error: "Invalid JWT signature" };
+    }
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return { valid: false, error: `JWT signature verification failed: ${msg}` };
+  }
+
+  const audiences = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
+  if (!audiences.includes(env.CLOUDFLARE_ACCESS_AUD)) {
+    return { valid: false, error: "JWT audience does not match CLOUDFLARE_ACCESS_AUD" };
+  }
+
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  if (typeof payload.exp === "number" && payload.exp < nowSeconds) {
+    return { valid: false, error: "JWT expired" };
+  }
+
+  return { valid: true, email: payload.email };
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const corsOrigin = resolveCorsOrigin(request);
@@ -73,6 +253,21 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
     const method = request.method;
+
+    // FF-P03-01 / D-NEW-002 (Option A): gate every mutating route behind a
+    // verified Cloudflare Access identity before it reaches a handler.
+    // Read-only/health routes (ROUTES_PUBLIC) are intentionally skipped.
+    if (routeRequiresAuth(method, path)) {
+      const auth = await verifyAccessJwt(request, env);
+      if (!auth.valid) {
+        const unauthorized = json(
+          { error: `Unauthorized: ${auth.error || "invalid Cloudflare Access identity"}` },
+          401
+        );
+        unauthorized.headers.set("Access-Control-Allow-Origin", corsOrigin);
+        return unauthorized;
+      }
+    }
 
     let response: Response;
     try {

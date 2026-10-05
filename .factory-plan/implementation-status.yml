@@ -171,26 +171,34 @@ items:
 - id: FF-P03-01
   phase: auth-admin-secrets
   title: Single-user/admin-created authentication with server-side authorization (no PAT-as-login)
-  status: not_started
+  status: implemented_unverified
   priority: critical
   dependencies: []
   repository_paths:
     - factory/intake/worker/src/index.ts
+    - factory/intake/worker/wrangler.toml
     - factory/intake/web/app.js
-  existing_evidence: []
+  existing_evidence:
+    - "D-NEW-002 decided Option A (Cloudflare Access only). factory/intake/worker/src/index.ts now has verifyAccessJwt() which verifies the Cf-Access-Jwt-Assertion header's signature (via the Access team's JWKS), audience (CLOUDFLARE_ACCESS_AUD), and expiry."
+    - "ROUTES_REQUIRING_AUTH gates POST /conversations, /projects, /conversations/:id/file-issue, /conversations/:id/messages, /conversations/:id/text-response — checked in the fetch() handler before the route dispatcher runs; invalid/missing JWT returns 401 before any handler/DB call executes."
+    - "ROUTES_PUBLIC (GET /version, /ollama/status, /ollama/history) stays open for health checks/monitoring, as scoped."
+    - "Fails closed: missing CLOUDFLARE_ACCESS_AUD config, wrong audience, expired token, unknown kid, and malformed JWTs are all rejected (not just missing-header)."
+    - "factory/tests/test_intake_worker_auth.py (11 tests, all passing) builds the real Worker with esbuild and drives it via factory/tests/helpers/worker_auth_driver.mjs, which signs test JWTs with a throwaway RSA key and mocks the Access JWKS endpoint — exercises the actual bundled TypeScript, not a Python mirror."
   missing_work:
-    - "No auth of any kind exists. factory/intake/worker/src/index.ts route dispatcher (80-104) performs no authentication/authorization check on any route."
-    - "Only control is CORS origin allow-listing (index.ts:49, 58-61) — browser-enforced, trivially bypassed via curl/Postman, not an authentication control."
-    - "factory/intake/web/app.js's only 'session' is a random conversation ID in localStorage (STORAGE_KEY_SESSION, app.js:14, 83-87) — used to resume a conversation, not to authenticate a user."
-    - "No login form, no users table, no admin flag, no Cloudflare Access configuration found anywhere in the repo."
+    - "Cloudflare Access Application has not been created in the dashboard yet — CLOUDFLARE_ACCESS_AUD and CLOUDFLARE_ACCESS_TEAM_DOMAIN in wrangler.toml are placeholders (see TODO comments there and in index.ts). Until that manual step is done, Access won't actually be fronting the Worker/Pages in production, and the AUD value needs to be swapped in from the real Application."
+    - "POST /conversations/:id/gemini-token and the /pending-profiles routes were out of this phase's explicit scope and are still unauthenticated — worth a follow-up decision on whether they should join ROUTES_REQUIRING_AUTH."
+    - "Per-user D1 profile storage keyed off the Access-verified email is explicitly deferred to Phase 04+ (not attempted here)."
+    - "Token masking (integration secrets) is explicitly deferred to FF-P03-02."
   acceptance_criteria:
     - "Every portal route requires a valid authenticated admin session server-side."
     - "No API token or secret can be used as a login credential."
-  verification_commands: []
-  verification_evidence: []
+  verification_commands:
+    - "python -m pytest factory/tests/test_intake_worker_auth.py -v"
+  verification_evidence:
+    - "11/11 tests passing (2026-10-05): missing/malformed/wrong-audience/expired/unknown-kid JWTs on POST /conversations all return 401; a correctly-signed, correct-audience, non-expired JWT returns 201; GET /version and GET /ollama/status stay 200/non-401 with no Access header; missing CLOUDFLARE_ACCESS_AUD config fails closed (401, not 201)."
   last_updated_at: "2026-10-05"
   last_updated_by: "claude:2026-10-05"
-  next_action: "Per §3.3's own fallback clause, this absence must be treated as a blocking security item, not scheduled behind feature work. Decide Cloudflare Access vs. custom users table (see decisions.yml D-NEW-002) before any other cloud-plane page is built or exposed further."
+  next_action: "Manual (out of scope for this phase): create the Cloudflare Access Application for factory.mtourk.com in the dashboard, record its AUD, and update CLOUDFLARE_ACCESS_AUD/CLOUDFLARE_ACCESS_TEAM_DOMAIN in factory/intake/worker/wrangler.toml. Then verify end-to-end against a real Access-issued JWT before flipping status to verified."
   blocker_id: FB-03
 
 - id: FF-P03-02

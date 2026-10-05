@@ -85,6 +85,15 @@ blockers:
     owner: "agent, pending human decision on D-NEW-002"
     opened_at: "2026-10-05"
     closed_at: null
+    progress_note: >
+      2026-10-05: D-NEW-002 decided Option A (Cloudflare Access). FF-P03-01 implemented
+      Cloudflare Access JWT verification gating the 5 mutating routes listed in
+      implementation-status.yml:FF-P03-01 (status: implemented_unverified, 11/11 tests
+      passing). Still open because: (1) the Cloudflare Access Application itself has not
+      been created in the dashboard yet (CLOUDFLARE_ACCESS_AUD/TEAM_DOMAIN in wrangler.toml
+      are placeholders), (2) gemini-token and pending-profiles routes remain unauthenticated
+      (out of this phase's explicit scope), and (3) rate-limiting middleware is still not
+      implemented.
 
   - id: FB-04
     title: "BMAD engine location/design not decided — real engine does not exist"
@@ -207,5 +216,37 @@ blockers:
       - "Until resolved: keep the explicit human handoff step in the workflow (as target_repo_setup.py already does for secrets) rather than attempting to silently bypass it — this is intentional friction (§19 critical mistake #16, no admin bypass), not a bug to route around."
       - "Document this as an accepted, human-gated step in the Definition of Done (§20) rather than claiming full autonomy prematurely."
     owner: "human (environment/credential policy decision)"
+    opened_at: "2026-10-05"
+    closed_at: null
+
+  - id: FB-09
+    title: "ContextBroker.assemble_role_context() raises ContextPolicyViolation for every role — broker is non-functional"
+    severity: high
+    category: correctness-bug
+    status: open
+    discovered_in: "FB-07 remediation agent (factory/implementation/builder.py fix), confirmed by direct invocation of ContextBroker"
+    evidence:
+      - "factory/context/broker.py: manifest_id built as f'pkg-{run_id}-{role.value}' but ContextManifest.manifest_id requires pattern ^manifest-[a-z0-9-]{16}$ — mismatch, always fails validation"
+      - "factory/context/broker.py:_compute_source_artifacts hardcodes source_phase=0, but SourceArtifact.source_phase requires ge=1 — always fails validation"
+      - "factory/context/broker.py:assemble_role_context validates ContextManifest(**manifest_dict) with manifest_hash='' BEFORE computing the real hash, but manifest_hash requires a 64-char hex pattern — this first validation call always raises ContextPolicyViolation before the hash is ever computed, regardless of the other two bugs"
+      - "Confirmed pre-existing (not caused by any uncommitted regex->pattern rename): direct call ContextBroker('x','RUN-abcd1234').assemble_role_context(FactoryRole.BUILDER) raises every time, on main before this session's changes"
+      - "Matches factory/tests/test_phase5_leakage.py's 12 pre-existing failing tests (confirmed via git stash/pytest diff: identical failure set before and after the FB-07 fix, so FB-07's change introduced no regression here)"
+    blocks:
+      - FF-P12-02
+      - FF-P13-01
+    impact: >
+      FB-07's fix correctly wires builder.py to call ContextBroker and fails closed
+      (except ContextPolicyViolation: pass) when the broker can't assemble a package — so no
+      raw-conversation leakage occurs, but the builder currently gets NO compiled_intent/
+      approved_plan either, since the broker always raises. The isolation violation is fixed; the
+      broker's actual usefulness (passing real sanitized context through) is blocked until these
+      three bugs are fixed. Any other future caller of ContextBroker (critics wiring, independent
+      review wiring) will hit the identical failure.
+    remediation:
+      - "Fix manifest_id generation to match pattern ^manifest-[a-z0-9-]{16}$ (e.g. f'manifest-{hashlib.sha256(package_id.encode()).hexdigest()[:16]}')."
+      - "Fix _compute_source_artifacts to use source_phase>=1 (e.g. source_phase=1 as a placeholder, or thread the actual phase number through from the caller)."
+      - "Fix the validate-before-hash ordering: compute manifest_hash first (using a placeholder/zero-hash input consistently), THEN construct/validate the final ContextManifest once, not twice with different hash states."
+      - "Add a regression test that calls ContextBroker(...).assemble_role_context(role) for every FactoryRole value and asserts it returns successfully (not just that it raises predictably)."
+    owner: "agent"
     opened_at: "2026-10-05"
     closed_at: null
