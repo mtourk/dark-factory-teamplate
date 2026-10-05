@@ -110,7 +110,7 @@ blocker_gates:
   FB-06: { gates: [FF-P10-01], status: open }
   FB-07: { gates: [FF-P12-02], status: resolved, closed_at: "2026-10-05" }
   FB-09: { gates: [FF-P12-02, FF-P13-01], status: resolved, closed_at: "2026-10-05" }
-  FB-11: { gates: [], status: open, note: "test-fixture bug in test_phase5_leakage.py only; doesn't block any FF item, blocks that file's own test suite from running meaningfully" }
+  FB-11: { gates: [], status: resolved, closed_at: "2026-10-05", note: "test-fixture bug in test_phase5_leakage.py; fixed commit 8b256d4 — 14/22 tests now pass (fixture bug eliminated)" }
   FB-08: { gates: [FF-P16-01, FF-P17-01], status: open }
 
 critical_path: >

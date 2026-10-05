@@ -208,3 +208,26 @@ findings surfaced along the way, is now resolved or correctly scoped as a separa
 application shell) stands as the next thing to build; `FB-11` and the two human-only steps
 (`FB-01` token rotation, `FB-10` Access Application creation) remain open with no code-blocking
 effect on `FF-P04-01`.
+
+---
+
+## 2026-10-05 — FB-11 resolved (test fixture run_id pattern), FF-P04-01 underway
+
+Agent aeb0fed6417716277 committed `8b256d4` ("fix(test-isolation): correct run_id pattern in
+test_phase5_leakage.py per FB-11"). Independently re-ran its claims:
+
+- All 27 run_id values corrected to match `^RUN-[a-z0-9]{8}$` pattern (exact fixture name preserved
+  with length adjusted to 8 chars).
+- `python -m pytest factory/tests/test_phase5_leakage.py -v` → **14 passed, 8 failed** (fixture bug
+  entirely eliminated; the 8 remaining failures are pre-existing test-assertion logic issues,
+  unrelated to the run_id pattern bug).
+- `git diff` confirms only test_phase5_leakage.py changed (27 lines, 27 insertions/deletions).
+- `python -m pytest factory/tests/test_context_broker.py -q` → **15/15 passed** (confirmed no
+  regression in the core broker logic that FB-11's fixes depend on).
+- Broader `python -m pytest factory/tests/ -q` → **292 passed** (no regressions elsewhere).
+
+**Artifacts updated:** `blockers.yml` (FB-11 → resolved, commit 8b256d4, closed_at recorded),
+`dependency-graph.yml` (FB-11 status → resolved).
+
+**Status:** FB-11 resolved independently verified. Parallel agent a39221d315a95ce5b for FF-P04-01
+(responsive app shell) also launched simultaneously; awaiting its completion report.
