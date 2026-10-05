@@ -1,5 +1,5 @@
 """
-Builder: Code generation via LLM with full discovery context.
+Builder: Code generation via LLM with sanitized, role-scoped context.
 
 Per master plan §10:
 "Builder receives only an observable failure envelope, allowed fix scope,
@@ -9,12 +9,18 @@ The builder may not delete/weaken/skip/exclude failing tests, modify
 sealed tests, or replace final integration behavior with mocks merely
 to pass."
 
-Implementation strategy (as of 2026-10-04):
+Per master plan §11 / critical mistake #10: the builder must never receive
+the raw discovery conversation or any other role's private memory. Context
+reaches the builder exclusively through `ContextBroker.assemble_role_context()`,
+which hands back a sanitized, role-appropriate `ContextPackage` (approved
+plan + compiled intent only — no raw Q&A, no sealed tests, no rubric).
+
+Implementation strategy (as of 2026-10-05):
 1. Read GitHub issue with `factory:ready` label
 2. Extract `model:implementation-32b` label to determine model (or default)
-3. Parse issue body to extract full discovery conversation + BMAD fields
-4. Call Ollama with 32B model (e.g., qwen2.5-coder:32b) using complete context
-5. Generator reads both structured BMAD and raw Q&A history for context
+3. Parse issue body to extract BMAD fields (acceptance criteria, non-goals, constraints)
+4. Assemble sanitized context via ContextBroker.assemble_role_context(FactoryRole.BUILDER)
+5. Call Ollama with 32B model (e.g., qwen2.5-coder:32b) using BMAD fields + sanitized context
 6. Per ADR §10: builder constraints enforced (no test deletion, no sealed test mods, etc.)
 
 Local execution (not Cloudflare): direct Ollama calls, no 524 timeout risk for large models.
@@ -29,6 +35,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
+from factory.context.broker import ContextBroker, ContextPolicyViolation
+from factory.models import FactoryRole
+
 
 @dataclass
 class BuilderInput:
@@ -41,9 +50,9 @@ class BuilderInput:
     failure_context: Optional[str] = None  # Error details from verification
     prohibited_paths: List[str] = field(default_factory=list)  # Cannot touch these
     previous_patch_digest: Optional[str] = None  # SHA of prior attempt
-    raw_conversation: Optional[str] = None  # Full discovery conversation (new)
     owner: Optional[str] = None  # GitHub owner for issue lookup
     repo: Optional[str] = None  # GitHub repo for issue lookup
+    project_id: Optional[str] = None  # For ContextBroker (project/run scoping, §6)
 
     def __post_init__(self):
         if not self.prohibited_paths:
@@ -464,7 +473,7 @@ class BuilderCoordinator:
         context: Dict[str, Any],
         builder_input: BuilderInput,
     ) -> str:
-        """Assemble the full prompt: BMAD fields + raw conversation + constraints."""
+        """Assemble the full prompt: BMAD fields + sanitized ContextBroker artifacts + constraints."""
         lines = [
             f"# Feature: {title}",
             "",
@@ -487,11 +496,34 @@ class BuilderCoordinator:
             lines.extend(f"- {c}" for c in context["constraints"])
             lines.append("")
 
-        if context["raw_conversation"]:
-            lines.append("## Discovery Conversation (for context on intent/reasoning)")
-            for msg in context["raw_conversation"]:
-                role = "User" if msg["role"] == "user" else "Discovery AI"
-                lines.append(f"{role}: {msg['text']}")
+        # Per §11 / critical mistake #10: the builder never sees the raw
+        # discovery conversation. Context beyond the BMAD fields above comes
+        # only through ContextBroker.assemble_role_context(), which returns a
+        # sanitized, role-scoped package (approved plan + compiled intent).
+        # Fail-closed (§6.1): if the broker cannot assemble/validate an
+        # isolated package, the builder simply gets nothing extra here rather
+        # than falling back to raw discovery data.
+        compiled_intent: Dict[str, Any] = {}
+        approved_plan: Dict[str, Any] = {}
+        try:
+            broker = ContextBroker(
+                project_id=builder_input.project_id or "unknown",
+                run_id=builder_input.run_id,
+            )
+            role_context = broker.assemble_role_context(FactoryRole.BUILDER)
+            compiled_intent = role_context.shared_artifacts.get("compiled_intent") or {}
+            approved_plan = role_context.shared_artifacts.get("approved_plan") or {}
+        except ContextPolicyViolation:
+            pass
+
+        if compiled_intent:
+            lines.append("## Compiled Intent (sanitized, via ContextBroker)")
+            lines.append(json.dumps(compiled_intent, indent=2, sort_keys=True))
+            lines.append("")
+
+        if approved_plan:
+            lines.append("## Approved Plan (sanitized, via ContextBroker)")
+            lines.append(json.dumps(approved_plan, indent=2, sort_keys=True))
             lines.append("")
 
         lines.append("## Build Instructions")
