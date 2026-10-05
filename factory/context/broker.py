@@ -209,14 +209,25 @@ class ContextBroker:
         package_id = f"pkg-{self.run_id}-{role.value}"
         session_id = f"sess-{role.value}-{datetime.utcnow().isoformat()}"
 
+        # manifest_id must match ContextManifest's pattern
+        # ^manifest-[a-z0-9-]{16}$ (factory/models.py), so derive a 16-char
+        # lowercase-alphanumeric suffix from a hash of (run_id, role) rather
+        # than reusing package_id (which contains uppercase/underscore chars
+        # and is not length-constrained).
+        manifest_suffix = hashlib.sha256(
+            f"{self.run_id}:{role.value}".encode()
+        ).hexdigest()[:16]
+        manifest_id = f"manifest-{manifest_suffix}"
+
         # Assemble sources
         governance = self.assemble_governance_context()
         knowledge = self.assemble_certified_knowledge()
         shared = self.assemble_shared_artifacts()
 
-        # Create manifest
+        # Create manifest (manifest_hash computed below, before the first
+        # and only ContextManifest validation -- see _compute_manifest_hash).
         manifest_dict = {
-            "manifest_id": package_id,
+            "manifest_id": manifest_id,
             "project_id": self.project_id,
             "run_id": self.run_id,
             "role": role,
@@ -229,19 +240,20 @@ class ContextBroker:
                 "approval_timestamp": datetime.utcnow().isoformat(),
             },
             "timestamp": datetime.utcnow().isoformat(),
-            "manifest_hash": "",  # Computed below
+            "manifest_hash": "",  # Placeholder; replaced below before validation
         }
 
-        # Validate manifest structure
+        # Compute manifest hash over the manifest contents (excluding the
+        # hash field itself, per _compute_manifest_hash) BEFORE constructing/
+        # validating the ContextManifest -- manifest_hash requires a 64-char
+        # hex pattern, so validating with "" first would always raise.
+        manifest_dict["manifest_hash"] = self._compute_manifest_hash(manifest_dict)
+
+        # Validate manifest structure exactly once, with the real hash.
         try:
             manifest = ContextManifest(**manifest_dict)
         except ValidationError as e:
             raise ContextPolicyViolation(f"Context manifest validation failed: {e}")
-
-        # Compute manifest hash
-        manifest_dict["manifest_hash"] = self._compute_manifest_hash(manifest_dict)
-        manifest_dict["manifest_hash"] = manifest_dict["manifest_hash"]
-        manifest = ContextManifest(**manifest_dict)
 
         # Assemble package
         package = ContextPackage(
@@ -282,7 +294,12 @@ class ContextBroker:
             artifacts.append({
                 "artifact_id": name,
                 "artifact_type": name,
-                "source_phase": 0,
+                # SourceArtifact.source_phase requires >=1 (factory/models.py).
+                # No caller currently threads a real phase number through to
+                # the broker (governance/certified_knowledge/shared_artifacts
+                # are all phase-agnostic, run-level context), so phase 1 is
+                # used as a placeholder pending real phase-tracking.
+                "source_phase": 1,
                 "hash_sha256": artifact_hash,
                 "description": f"{name} context",
             })
