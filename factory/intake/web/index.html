@@ -7,6 +7,9 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
+    <!-- Skip link: offscreen until focused, lets keyboard users jump past nav -->
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
     <div class="container">
       <!-- Header -->
       <header class="header">
@@ -20,10 +23,21 @@
         </div>
       </header>
 
+      <!-- Primary navigation (hash-based router — see app.js Router) -->
+      <nav id="app-nav" class="app-nav" aria-label="Primary">
+        <a id="nav-home" href="#/" class="nav-link" data-route="/">Home</a>
+        <a id="nav-conversation" href="#/conversation" class="nav-link" data-route="/conversation"
+          >Conversation</a
+        >
+        <a id="nav-history" href="#/history" class="nav-link" data-route="/history">History</a>
+        <a id="nav-settings" href="#/settings" class="nav-link" data-route="/settings">Settings</a>
+      </nav>
+
       <!-- Main Content -->
-      <main class="main-content">
+      <main id="main-content" class="main-content">
         <!-- Hero Section (shown when no conversation active) -->
-        <section id="hero-section" class="hero-section">
+        <section id="hero-section" class="hero-section page-section" aria-labelledby="hero-heading" tabindex="-1">
+          <h2 id="hero-heading" class="sr-only">Home</h2>
           <div class="hero-content">
             <button id="voice-btn" class="btn-voice" title="Start voice conversation">
               <span class="mic-icon">🎤</span>
@@ -36,7 +50,8 @@
         </section>
 
         <!-- Conversation Area -->
-        <section id="chat-section" class="chat-section hidden">
+        <section id="chat-section" class="chat-section page-section hidden" aria-labelledby="chat-heading" tabindex="-1">
+          <h2 id="chat-heading" class="sr-only">Conversation</h2>
           <div id="messages-container" class="messages-container"></div>
 
           <!-- Input Area -->
@@ -92,16 +107,28 @@
         </section>
 
         <!-- Success Section (shown after filing) -->
-        <section id="success-section" class="success-section hidden">
+        <section id="success-section" class="success-section page-section hidden" aria-labelledby="success-heading" tabindex="-1">
           <div class="success-content">
             <div class="success-icon">✅</div>
-            <h2>Issue Filed!</h2>
+            <h2 id="success-heading">Issue Filed!</h2>
             <p id="success-message" class="success-message"></p>
             <div class="success-actions">
               <a id="issue-link" href="#" target="_blank" class="btn-primary">View on GitHub →</a>
               <button id="new-intake-btn" class="btn-secondary">Submit Another</button>
             </div>
           </div>
+        </section>
+
+        <!-- History Section (placeholder page for FF-P05-01: past intake conversations) -->
+        <section id="history-section" class="page-section page-placeholder hidden" aria-labelledby="history-heading" tabindex="-1">
+          <h2 id="history-heading">History</h2>
+          <p>Past intake conversations will appear here. (Coming soon — FF-P05-01.)</p>
+        </section>
+
+        <!-- Settings Section (placeholder page for future repo/account settings phases) -->
+        <section id="settings-section" class="page-section page-placeholder hidden" aria-labelledby="settings-heading" tabindex="-1">
+          <h2 id="settings-heading">Settings</h2>
+          <p>Repository and account settings will appear here. (Coming soon.)</p>
         </section>
       </main>
 

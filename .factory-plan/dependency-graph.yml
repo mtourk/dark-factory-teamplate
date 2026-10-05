@@ -16,7 +16,7 @@ item_graph:
   FF-P02-02: { depends_on: [FF-P02-01], gated_by_blocker: [FB-05] }
   FF-P03-01: { depends_on: [], gated_by_blocker: [FB-10], gated_by_decision: [], status: implemented_unverified }
   FF-P03-02: { depends_on: [FF-P02-01], gated_by_blocker: [FB-01], gated_by_decision: [D-NEW-003] }
-  FF-P04-01: { depends_on: [FF-P03-01], gated_by_decision: [D-NEW-001, D-NEW-002] }
+  FF-P04-01: { depends_on: [FF-P03-01], gated_by_decision: [D-NEW-001, D-NEW-002], status: implemented }
   FF-P05-01: { depends_on: [FF-P04-01] }
   FF-P06-01: { depends_on: [FF-P04-01], gated_by_blocker: [FB-02] }
   FF-P07-01: { depends_on: [FF-P03-01], gated_by_blocker: [FB-04], gated_by_decision: [D-NEW-004] }
@@ -94,7 +94,7 @@ phase_order:
 
 # --- decisions that must be made before certain items can leave not_started ---
 decision_gates:
-  D-NEW-001: { gates: [FF-P04-01], status: open }
+  D-NEW-001: { gates: [FF-P04-01], status: decided, chosen_option: A, closed_at: "2026-10-05", note: "Reconciled with decisions.yml (status: decided since 2026-10-05); FF-P04-01 implemented against chosen_option A (extend vanilla JS in place)." }
   D-NEW-002: { gates: [FF-P03-01, FF-P04-01, FF-P07-01, FF-P09-01, FF-P09-02], status: decided, chosen_option: A }
   D-NEW-003: { gates: [FF-P03-02], status: open }
   D-NEW-004: { gates: [FF-P07-01], status: open }

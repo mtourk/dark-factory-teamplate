@@ -13,16 +13,22 @@
 phase: "04-app-shell"
 title: "Responsive application shell"
 deliverables:
-  - "React/Vite/TypeScript"
-  - "shadcn/Tailwind"
-  - "desktop/mobile navigation"
-  - "route guards"
-  - "loading/error/offline states"
-  - "accessibility baseline"
-overall_status: not_started
+  - "Responsive application shell (desktop/tablet/mobile viewport)"
+  - "Navigation structure (routing without a framework)"
+  - "Application state management (minimal, in-memory, persistent to localStorage)"
+  - "Responsive design and layout (CSS Grid/Flexbox, no Bootstrap/Tailwind)"
+  - "Keyboard navigation and shortcuts (Tab, Enter, Escape)"
+  - "Focus management and accessibility basics (aria-labels, semantic HTML)"
+# Note: the original deliverable list copied from the master plan's generic
+# phase-16 template (React/Vite/TypeScript, shadcn/Tailwind, route guards,
+# loading/error/offline states) was superseded by D-NEW-001 (decided: extend
+# the existing vanilla-JS frontend in place rather than rebuild on a
+# framework). The list above reflects what FF-P04-01 actually delivers under
+# that decision.
+overall_status: implemented
 items:
   - id: FF-P04-01
-    status: not_started
+    status: implemented
     blocker_id: null
     decision_id: D-NEW-001
     full_evidence: "see implementation-status.yml:FF-P04-01"

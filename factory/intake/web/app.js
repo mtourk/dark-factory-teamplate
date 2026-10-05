@@ -13,6 +13,10 @@
 const WORKER_URL = "https://dark-factory-intake.mohammad-tourk.workers.dev";
 const STORAGE_KEY_SESSION = "dfactory_session_id";
 const STORAGE_KEY_DRAFT = "dfactory_draft";
+// FF-P04-01 (D-NEW-001): app-shell UI state (active route). Separate key from the
+// conversation session/draft above — the shell's own persistence must never interact
+// with the conversation-submission flow's storage.
+const STORAGE_KEY_UI_STATE = "dfactory_ui_state";
 
 // ============ State ============
 
@@ -72,7 +76,301 @@ const elements = {
   newRepoName: document.getElementById("new-repo-name"),
   createRepoBtn: document.getElementById("create-repo-btn"),
   repoModalCloseBtn: document.getElementById("repo-modal-close-btn"),
+  // App-shell navigation + pages (FF-P04-01)
+  navHome: document.getElementById("nav-home"),
+  navConversation: document.getElementById("nav-conversation"),
+  navHistory: document.getElementById("nav-history"),
+  navSettings: document.getElementById("nav-settings"),
+  historySection: document.getElementById("history-section"),
+  settingsSection: document.getElementById("settings-section"),
 };
+
+// ============================================================================
+// ============ Application Shell: Router + State (FF-P04-01) ================
+// ============================================================================
+//
+// Per D-NEW-001 (decided: extend vanilla JS in place rather than adopt a
+// framework), this is a *minimal*, hand-rolled hash router and a tiny
+// observable state container. No build step, no dependencies. Future pages
+// (FF-P05-01 idea intake, FF-P06-01 voice, FF-P13-02 critics/decision,
+// FF-P17-01 monitoring, FF-P18-01 notifications) should each:
+//
+//   1. Add a <section id="...-section" class="page-section hidden" tabindex="-1">
+//      to index.html (see history-section/settings-section for the placeholder
+//      pattern) and register it in `pageSections` below.
+//   2. Call `Router.register("/your-route", () => showPage("yourKey"))`.
+//   3. Add a <a class="nav-link" href="#/your-route" data-route="/your-route">
+//      to #app-nav if it should be reachable from the primary nav.
+//
+// Router: a plain object literal (module-pattern IIFE) that maps a normalized
+// hash path ("/", "/conversation", ...) to a zero-arg handler. `navigate()`
+// updates `location.hash` (so the URL is always a valid deep link / is
+// bookmarkable / supports browser back-forward) AND resolves synchronously
+// (handlers do not wait for the async `hashchange` event), so callers can
+// rely on the DOM being updated immediately after `navigate()` returns. The
+// `hashchange` listener re-resolves for the back/forward-button and
+// manually-edited-URL cases; `resolve()` is idempotent so double-invocation
+// (sync + event) is harmless.
+const Router = (() => {
+  const routes = {};
+  let notFoundHandler = null;
+  let currentRoute = null;
+
+  function normalizeHash(hash) {
+    let h = (hash || "").replace(/^#/, "");
+    if (!h.startsWith("/")) h = "/" + h;
+    if (h.length > 1 && h.endsWith("/")) h = h.slice(0, -1);
+    return h || "/";
+  }
+
+  function currentPath() {
+    return normalizeHash(window.location.hash);
+  }
+
+  function register(path, handler) {
+    routes[path] = handler;
+  }
+
+  function setNotFound(handler) {
+    notFoundHandler = handler;
+  }
+
+  function resolve() {
+    const path = currentPath();
+    currentRoute = path;
+    const handler = routes[path] || notFoundHandler;
+    if (typeof handler === "function") handler(path);
+    // Re-read `currentRoute` (not the locally-captured `path`) before
+    // persisting: a notFound handler typically calls navigate() again
+    // reentrantly, which mutates `currentRoute` to the redirected-to route
+    // before this line runs. Persisting the stale `path` here would record
+    // the invalid pre-redirect route instead of where the app actually
+    // ended up.
+    AppShellState.setActiveRoute(currentRoute);
+    return currentRoute;
+  }
+
+  function navigate(path) {
+    const normalized = normalizeHash(path);
+    if (currentPath() !== normalized) {
+      window.location.hash = normalized;
+    }
+    // Always resolve synchronously too, so DOM updates happen before
+    // navigate() returns regardless of hashchange event timing.
+    resolve();
+  }
+
+  function start() {
+    window.addEventListener("hashchange", resolve);
+    resolve();
+  }
+
+  function getCurrentRoute() {
+    return currentRoute;
+  }
+
+  return { register, setNotFound, navigate, start, resolve, getCurrentRoute, normalizeHash };
+})();
+
+// AppShellState: the shell's own tiny state container (distinct from the
+// conversation `state` object above). Tracks only what the shell itself
+// needs — currently just the active route — and persists it to localStorage
+// so a hard reload of a hash-less URL restores the last page the user was
+// on. This is intentionally minimal: conversation data stays in `state`
+// and on the Worker/D1, never here.
+const AppShellState = (() => {
+  let shellState = { activeRoute: "/" };
+  const subscribers = new Set();
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_UI_STATE);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed.activeRoute === "string") {
+          shellState = { ...shellState, ...parsed };
+        }
+      }
+    } catch (error) {
+      console.warn("Failed to restore UI state:", error);
+    }
+    return shellState;
+  }
+
+  function setActiveRoute(route) {
+    shellState = { ...shellState, activeRoute: route };
+    try {
+      localStorage.setItem(STORAGE_KEY_UI_STATE, JSON.stringify(shellState));
+    } catch (error) {
+      console.warn("Failed to persist UI state:", error);
+    }
+    subscribers.forEach((fn) => fn(shellState));
+  }
+
+  function getState() {
+    return shellState;
+  }
+
+  function subscribe(fn) {
+    subscribers.add(fn);
+    return () => subscribers.delete(fn);
+  }
+
+  return { load, setActiveRoute, getState, subscribe };
+})();
+
+// Every top-level "page" the shell currently knows about. One of these is
+// visible at a time; `showPage()` is the single place that enforces that.
+const pageSections = {
+  hero: elements.heroSection,
+  chat: elements.chatSection,
+  success: elements.successSection,
+  history: elements.historySection,
+  settings: elements.settingsSection,
+};
+
+const navLinkByRoute = {
+  "/": elements.navHome,
+  "/conversation": elements.navConversation,
+  "/history": elements.navHistory,
+  "/settings": elements.navSettings,
+};
+
+function showPage(name) {
+  Object.entries(pageSections).forEach(([key, el]) => {
+    if (!el) return;
+    if (key === name) el.classList.remove("hidden");
+    else el.classList.add("hidden");
+  });
+
+  updateNavActiveState(Router.getCurrentRoute());
+
+  // Focus management: move focus to the newly-shown page's own container so
+  // assistive tech announces the view change (route change == page change).
+  const shown = pageSections[name];
+  if (shown && typeof shown.focus === "function") {
+    shown.focus();
+  }
+}
+
+function updateNavActiveState(route) {
+  Object.entries(navLinkByRoute).forEach(([path, link]) => {
+    if (!link) return;
+    if (path === route) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  });
+}
+
+// ---- Modal focus trap + Escape-to-close (keyboard nav + a11y basics) ----
+//
+// Each modal gets an ordered list of its own focusable elements (explicit,
+// not queried from the DOM, since this file doesn't use querySelectorAll
+// anywhere else). open() remembers what was focused before opening and
+// restores it on close(); handleTab() cycles focus within the modal so Tab
+// never escapes to the page behind it while the modal is open.
+function createModal(modalEl, getFocusables) {
+  let previouslyFocused = null;
+
+  function isOpen() {
+    return !!modalEl && !modalEl.classList.contains("hidden");
+  }
+
+  function open() {
+    if (!modalEl) return;
+    previouslyFocused = document.activeElement;
+    modalEl.classList.remove("hidden");
+    const focusables = getFocusables().filter((el) => el && !el.disabled);
+    if (focusables[0] && typeof focusables[0].focus === "function") {
+      focusables[0].focus();
+    }
+  }
+
+  function close() {
+    if (!modalEl) return;
+    modalEl.classList.add("hidden");
+    if (previouslyFocused && typeof previouslyFocused.focus === "function") {
+      previouslyFocused.focus();
+    }
+    previouslyFocused = null;
+  }
+
+  function handleTab(event) {
+    const focusables = getFocusables().filter((el) => el && !el.disabled);
+    if (focusables.length === 0) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const active = document.activeElement;
+
+    if (event.shiftKey && active === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
+  return { open, close, isOpen, handleTab };
+}
+
+const helpModalController = createModal(elements.helpModal, () => [elements.helpCloseBtn]);
+const repoModalController = createModal(elements.repoModal, () => [
+  elements.existingRepoUrl,
+  elements.useExistingBtn,
+  elements.newRepoName,
+  elements.createRepoBtn,
+  elements.repoModalCloseBtn,
+]);
+
+function getOpenModal() {
+  if (repoModalController.isOpen()) return repoModalController;
+  if (helpModalController.isOpen()) return helpModalController;
+  return null;
+}
+
+// Single global keydown handler: Escape closes whichever modal is open
+// (minimum required shortcut), Tab is trapped within it. Outside of a
+// modal, Tab falls through to normal browser focus order — every
+// interactive element in this app is a native <button>/<a>/<input>/
+// <textarea>, so no extra JS is needed for plain Tab navigation.
+document.addEventListener("keydown", (event) => {
+  const modal = getOpenModal();
+  if (!modal) return;
+
+  if (event.key === "Escape") {
+    event.preventDefault();
+    modal.close();
+    return;
+  }
+
+  if (event.key === "Tab") {
+    modal.handleTab(event);
+  }
+});
+
+// ---- Route table ----
+Router.register("/", () => showPage("hero"));
+Router.register("/conversation", () => showPage("chat"));
+Router.register("/success", () => showPage("success"));
+Router.register("/history", () => showPage("history"));
+Router.register("/settings", () => showPage("settings"));
+Router.setNotFound(() => Router.navigate("/"));
+
+// ---- Bootstrap the shell ----
+// If the URL has no hash yet, fall back to the last-visited route (if any)
+// before the router's first resolve, so a bare reload restores context.
+// An explicit hash in the URL always wins over the stored one.
+(function bootstrapShell() {
+  AppShellState.load();
+  const hasExplicitHash = !!window.location.hash && window.location.hash !== "#";
+  if (!hasExplicitHash) {
+    const restoredRoute = AppShellState.getState().activeRoute;
+    if (restoredRoute && restoredRoute !== "/") {
+      window.location.hash = Router.normalizeHash(restoredRoute);
+    }
+  }
+  Router.start();
+})();
 
 // ============ Initialization ============
 
@@ -94,6 +392,10 @@ async function init() {
     if (e.key === "Enter") sendTextMessage();
   });
 
+  // Primary nav: anchors update location.hash natively on click/Enter; the
+  // Router's own "hashchange" listener (registered in bootstrapShell) does
+  // the rest, so no click handlers are needed here.
+
   elements.fileIssueBtn.addEventListener("click", fileIssue);
   elements.editIssueBtn.addEventListener("click", editIssue);
   elements.saveDraftBtn.addEventListener("click", saveDraft);
@@ -107,8 +409,14 @@ async function init() {
       return;
     }
     state.selectedRepoUrl = url;
-    elements.repoModal.classList.add("hidden");
+    repoModalController.close();
     await fileIssueToRepo();
+  });
+  elements.existingRepoUrl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      elements.useExistingBtn.click();
+    }
   });
 
   elements.createRepoBtn.addEventListener("click", async () => {
@@ -128,7 +436,7 @@ async function init() {
       if (!response.ok) throw new Error("Failed to create repo");
       const data = await response.json();
       state.selectedRepoUrl = data.repo.html_url;
-      elements.repoModal.classList.add("hidden");
+      repoModalController.close();
       await fileIssueToRepo();
     } catch (error) {
       alert(`Error creating repo: ${error.message}`);
@@ -137,17 +445,19 @@ async function init() {
       elements.createRepoBtn.disabled = false;
     }
   });
-
-  elements.repoModalCloseBtn.addEventListener("click", () => {
-    elements.repoModal.classList.add("hidden");
+  elements.newRepoName.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      elements.createRepoBtn.click();
+    }
   });
 
-  elements.helpBtn.addEventListener("click", () =>
-    elements.helpModal.classList.remove("hidden")
-  );
-  elements.helpCloseBtn.addEventListener("click", () =>
-    elements.helpModal.classList.add("hidden")
-  );
+  elements.repoModalCloseBtn.addEventListener("click", () => {
+    repoModalController.close();
+  });
+
+  elements.helpBtn.addEventListener("click", () => helpModalController.open());
+  elements.helpCloseBtn.addEventListener("click", () => helpModalController.close());
   elements.closeBtn.addEventListener("click", () => window.close());
 }
 
@@ -460,7 +770,7 @@ async function fileIssue() {
   state.selectedRepoUrl = null;
   elements.existingRepoUrl.value = "";
   elements.newRepoName.value = "";
-  elements.repoModal.classList.remove("hidden");
+  repoModalController.open();
 }
 
 async function fileIssueToRepo() {
@@ -504,15 +814,22 @@ async function fileIssueToRepo() {
 }
 
 // ============ UI State ============
+//
+// These three functions are the pre-existing entry points the conversation
+// flow calls to switch "pages". They now delegate to the Router (FF-P04-01)
+// instead of toggling .hidden directly, so every page transition is also a
+// valid, bookmarkable URL — but the resulting visible DOM state is
+// unchanged: showChatSection() still ends with hero hidden/chat visible,
+// showSuccessSection() still ends with chat hidden/success visible (and now
+// also hides history/settings, which didn't exist before and are therefore
+// never a regression), resetIntake() still ends back at the hero section.
 
 function showChatSection() {
-  elements.heroSection.classList.add("hidden");
-  elements.chatSection.classList.remove("hidden");
+  Router.navigate("/conversation");
 }
 
 function showSuccessSection() {
-  elements.chatSection.classList.add("hidden");
-  elements.successSection.classList.remove("hidden");
+  Router.navigate("/success");
 
   elements.successMessage.textContent = `✅ Issue #${state.issueNumber} filed and ready for implementation!`;
   elements.issueLink.href = state.issueUrl;
@@ -542,9 +859,7 @@ function resetIntake() {
   localStorage.removeItem(STORAGE_KEY_SESSION);
   localStorage.removeItem(STORAGE_KEY_DRAFT);
 
-  elements.heroSection.classList.remove("hidden");
-  elements.chatSection.classList.add("hidden");
-  elements.successSection.classList.add("hidden");
+  Router.navigate("/");
 }
 
 // ============ Utilities ============
@@ -558,3 +873,20 @@ function escapeHtml(text) {
 // Start the app
 document.addEventListener("DOMContentLoaded", init);
 document.addEventListener("DOMContentLoaded", updateVersionFooter);
+
+// Test hook (FF-P04-01): exposes the shell internals to the Node-based driver
+// used by factory/tests/test_intake_web_shell.py
+// (factory/tests/helpers/app_shell_driver.mjs). This is a no-op in the
+// browser — nothing reads this global outside the test harness.
+if (typeof globalThis !== "undefined") {
+  globalThis.__DFACTORY_SHELL__ = {
+    Router,
+    AppShellState,
+    pageSections,
+    showPage,
+    helpModalController,
+    repoModalController,
+    elements,
+    getState: () => state,
+  };
+}

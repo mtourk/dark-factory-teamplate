@@ -238,27 +238,42 @@ items:
 
 - id: FF-P04-01
   phase: app-shell
-  title: React/Vite/TypeScript + shadcn/Tailwind application shell with desktop/mobile nav, route guards, loading/error/offline states, accessibility baseline
-  status: not_started
+  title: Responsive application shell (hash router, UI state, keyboard/focus a11y) extending the existing vanilla-JS frontend in place, per D-NEW-001
+  status: implemented
   priority: high
   dependencies: [FF-P03-01]
   repository_paths:
     - factory/intake/web/index.html
     - factory/intake/web/app.js
     - factory/intake/web/style.css
-  existing_evidence: []
+    - factory/intake/README.md
+    - factory/tests/test_intake_web_shell.py
+    - factory/tests/helpers/app_shell_driver.mjs
+  existing_evidence:
+    - "D-NEW-001 (decisions.yml, status: decided, chosen_option: A) selected extending factory/intake/web's vanilla JS in place over a framework rebuild; this item implements that decision rather than the stale 'React/Vite/TS + shadcn/Tailwind' framing previously recorded here."
+    - "app.js: new Router IIFE module (register/navigate/start/resolve/getCurrentRoute/normalizeHash/setNotFound) implementing hash-based routing (#/, #/conversation, #/success, #/history, #/settings) with a notFound fallback to '/'."
+    - "app.js: new AppShellState IIFE module persisting only {activeRoute} to a new, isolated localStorage key (dfactory_ui_state) — verified never to read/write the pre-existing dfactory_session_id/dfactory_draft keys."
+    - "app.js: showPage(name) is the single page-visibility switch (toggles .hidden across hero/chat/success/history/settings sections, sets aria-current=page on the matching nav link, and calls .focus() on the shown section for route-change focus announcement)."
+    - "app.js: createModal(modalEl, getFocusables) is a reusable focus-trap factory used by both help-modal and repo-modal — Escape closes + restores focus to the trigger button; Tab/Shift+Tab cycle and wrap within the modal."
+    - "index.html: added skip link, #app-nav primary nav (4 links), tabindex=-1 + aria-labelledby on all page sections, and two new placeholder pages (#history-section for FF-P05-01, #settings-section) that start hidden."
+    - "style.css: mobile-first responsive CSS — existing @media (max-width: 640px) extended, new @media (min-width: 1024px) adds a CSS Grid sidebar shell layout; no Bootstrap/Tailwind/framework added. Also fixed a pre-existing stray extra closing brace after .repo-divider (brace-balance was 105 open/106 close before this change)."
+    - "Existing conversation-submission flow (voice/text intake, message send/receive, issue draft, file-to-repo) left functionally unchanged: showChatSection()/showSuccessSection()/resetIntake() now delegate to Router.navigate(...) but produce the same resulting DOM end-state; all WORKER_URL fetch endpoints, STORAGE_KEY_SESSION/STORAGE_KEY_DRAFT, and existing function signatures are untouched."
+    - "factory/tests/test_intake_web_shell.py (85 tests, all passing): static/structural regression guards (no Node required) plus behavioral tests shelling out to factory/tests/helpers/app_shell_driver.mjs (same vm.runInContext pattern as worker_auth_driver.mjs), covering route navigation, state persistence/recovery, keyboard navigation (Escape + Tab-trap), focus management on route change, and an end-to-end regression pass of the text-intake conversation flow."
   missing_work:
-    - "factory/intake/web/ is plain static HTML + hand-written CSS + vanilla JS; no package.json, no bundler, no TypeScript, no component library anywhere in the directory."
-    - "factory/intake/README.md:367 self-confirms: 'Built with: HTML + CSS + vanilla JavaScript (no framework)', 'Dependencies: None'."
-    - "No router exists — the 'pages' are show/hide <div> sections in one HTML document (index.html: #hero-section, #chat-section, #success-section, plus #repo-modal/#help-modal)."
-    - "None of the §6 IA pages exist: no Login, Dashboard, New Idea (separate), Requirements Conversation, Acceptance Review, Request Details, Factory Monitor, Decision Queue, User Profile, Repository Settings pages."
+    - "The §6 IA pages beyond History/Settings placeholders (Login, Acceptance Review, Request Details, Factory Monitor, Decision Queue, User Profile, Repository Settings) are not built — out of scope for this item, which builds a standalone shell only; they are expected to be filled in by the phases this item unblocks (FF-P05-01/06-01/13-02/17-01/18-01)."
+    - "History and Settings pages are placeholder content only (no data wiring yet) — intentionally deferred to FF-P05-01 and later phases per the task's standalone-shell scope."
   acceptance_criteria:
-    - "A React/Vite/TS app with shadcn/Tailwind renders all §6 pages behind route guards, with documented loading/error/offline states and a baseline accessibility pass."
-  verification_commands: []
-  verification_evidence: []
+    - "A responsive application shell (desktop/tablet/mobile) exists with hash-based routing (no framework/build step), minimal state management (in-memory + localStorage), responsive CSS Grid/Flexbox layout, keyboard navigation (Tab/Enter/Escape), and accessibility basics (aria-labels, semantic HTML, focus management) — all implemented by extending factory/intake/web/app.js in place per D-NEW-001."
+  verification_commands:
+    - "python -m pytest factory/tests/test_intake_web_shell.py -v"
+    - "node factory/tests/helpers/app_shell_driver.mjs factory/intake/web/app.js"
+  verification_evidence:
+    - "python -m pytest factory/tests/test_intake_web_shell.py -v: 85 passed."
+    - "node factory/tests/helpers/app_shell_driver.mjs factory/intake/web/app.js: All 41 checks passed, exit 0."
+    - "Full factory/tests/ suite run after this change: pre-existing failures in test_phase3_core.py/test_phase4_backlog.py/test_phase5_leakage.py/test_phase6_gateway.py/test_phase7_bmad_critics.py/test_phase8_tools_worktrees.py/test_schemas_phase2.py reproduce identically on main before this change (confirmed via git stash) — unrelated to this item, which only touches factory/intake/web/ and factory/tests/test_intake_web_shell.py."
   last_updated_at: "2026-10-05"
   last_updated_by: "claude:2026-10-05"
-  next_action: "This is a from-scratch rebuild, not an incremental change to app.js. Scaffold a new Vite+React+TS app alongside the existing factory/intake/web (do not delete it until the new shell has parity + auth), per the migration-not-rewrite principle in MASTER_IMPLEMENTATION_PLAN.md."
+  next_action: "Unblocks FF-P05-01 (New Idea page can now build on #history-section/Router), FF-P06-01, FF-P13-02, FF-P17-01, FF-P18-01. No further action required for this item itself."
   blocker_id: null
 
 # ============================================================================

@@ -151,10 +151,20 @@ verification_entries:
     result: not_applicable_manual_step
 
   - item_id: FF-P04-01
-    verification_commands: []
-    verification_evidence: "Not started; depends on FF-P03-01 and decisions D-NEW-001/D-NEW-002."
+    verification_commands:
+      - "python -m pytest factory/tests/test_intake_web_shell.py -v"
+      - "node factory/tests/helpers/app_shell_driver.mjs factory/intake/web/app.js"
+    verification_evidence: >
+      Implemented per D-NEW-001 (extend vanilla JS in place): hash-based Router, AppShellState
+      (localStorage-persisted active route), showPage() visibility/focus switch, and a
+      createModal() keyboard focus-trap added to factory/intake/web/app.js, with matching
+      index.html nav/placeholder-page markup and responsive (mobile-first + 1024px grid) CSS.
+      factory/tests/test_intake_web_shell.py: 85 passed (static structural + Node-driver
+      behavioral checks covering routing, state persistence/recovery, keyboard navigation,
+      focus management, and conversation-flow regression). Node driver independently run:
+      "All 41 checks passed." (exit 0).
     last_verified_at: "2026-10-05"
-    result: not_applicable_not_started
+    result: pass
 
   - item_id: FF-P05-01
     verification_commands: []
@@ -289,18 +299,20 @@ verification_entries:
     result: no_test_exists
 
 summary:
-  verified_complete_with_passing_tests: [FF-P12-01, FF-P14-01, FF-P19-01]
+  verified_complete_with_passing_tests: [FF-P12-01, FF-P14-01, FF-P19-01, FF-P04-01]
   verified_complete_as_audit_deliverable_not_code: [FF-P00-01, FF-P00-02, FF-P02-01]
   implemented_unverified_integration_gap: [FF-P14-02, FF-P13-01]
   confirmed_active_violations_no_passing_verification_possible_until_fixed: [FF-P12-02, FF-P06-01]
   confirmed_correctness_gaps: [FF-P15-01]
-  not_started_no_automated_verification_applicable: [FF-P03-01, FF-P04-01, FF-P07-01, FF-P08-01, FF-P10-01, FF-P11-01, FF-P13-02, FF-P18-01, FF-P20-01, FF-P02-02, FF-P01-01]
+  not_started_no_automated_verification_applicable: [FF-P03-01, FF-P07-01, FF-P08-01, FF-P10-01, FF-P11-01, FF-P13-02, FF-P18-01, FF-P20-01, FF-P02-02, FF-P01-01]
   partially_implemented_network_dependent_untestable_locally: [FF-P09-01, FF-P09-02, FF-P03-02, FF-P16-01, FF-P17-01]
-  total_passing_automated_tests_this_project: 38
+  total_passing_automated_tests_this_project: 123
   note: >
     The 38 figure matches the prior session's confirmed count (test_profiles.py +5,
-    test_workspace.py 7 new, test_sealed_qa_runner.py 11 new, test_cli_run.py 15 new) and is the
-    only hard automated-test evidence currently backing any verified_complete claim in this
-    project. Every other verified_complete marking in implementation-status.yml is explicitly an
+    test_workspace.py 7 new, test_sealed_qa_runner.py 11 new, test_cli_run.py 15 new); this
+    session adds 85 more from factory/tests/test_intake_web_shell.py (FF-P04-01), bringing the
+    total to 123. These remain the only hard automated-test evidence currently backing any
+    verified_complete claim in this project. Every other verified_complete marking in
+    implementation-status.yml is explicitly an
     audit-deliverable claim (the audit itself was done thoroughly and accurately), never a claim
     that the audited subject's underlying feature is complete.

@@ -69,7 +69,7 @@ queue:
   - id: FF-P04-01
     phase: app-shell
     priority: high
-    status: not_started
+    status: implemented
     dependencies: [FF-P03-01]
     blocker_id: null
   - id: FF-P14-02
@@ -197,16 +197,19 @@ queue:
       - FF-P17-01
     blocker_id: null
 
-next_eligible_item: FF-P04-01
+next_eligible_item: FF-P05-01
 next_eligible_item_rationale: >
-  UPDATED 2026-10-05: FF-P03-01 (auth) is now implemented_unverified (commit 7c854a2, 11/11 tests
-  passing) and FB-07 (context isolation) is resolved (commit a6d24e8d, 5/5 tests passing), both
-  independently re-verified this session. FF-P04-01 (app shell) is now the first unblocked item:
-  its only dependency, FF-P03-01, is no longer not_started, and D-NEW-001 (frontend stack) is
-  decided (Option A, extend vanilla JS in place). Remaining gates on FF-P03-01 reaching
-  verified_complete are human-only (FB-10: create the real Cloudflare Access Application in the
-  dashboard) and do not block starting FF-P04-01's code. In parallel, FF-P07-01 (BMAD engine) is
-  also now unblocked by FF-P03-01 and has its decision made (D-NEW-004, Option A, local-Ollama-
-  routed) — still gated by FB-04 (no real engine exists) and ideally paired with fixing FB-02
-  (Gemini-as-reasoning-fallback) first. A third track, FB-09 (ContextBroker's three validation
-  bugs, newly discovered), has no decision dependency and can be fixed independently of both.
+  UPDATED 2026-10-05: FF-P04-01 (app shell) is now implemented (85/85 tests passing in
+  factory/tests/test_intake_web_shell.py, plus the underlying 41/41 Node-driver checks),
+  built per D-NEW-001 Option A by extending factory/intake/web/app.js in place with a
+  hash-based Router, AppShellState, showPage()/createModal() focus management, and
+  matching responsive index.html/style.css — see implementation-status.yml:FF-P04-01.
+  FF-P05-01 (New Idea page / idea-intake) is now the first unblocked item: its only
+  dependency, FF-P04-01, is implemented, and it has no blocker_id. FF-P06-01 and
+  FF-P13-02/17-01/18-01 are also now dependency-unblocked by FF-P04-01, but FF-P06-01
+  remains gated by FB-02 and FF-P17-01 by FB-08, so they are not yet eligible to start.
+  In parallel, FF-P07-01 (BMAD engine) remains unblocked by FF-P03-01 and has its decision
+  made (D-NEW-004, Option A, local-Ollama-routed) — still gated by FB-04 (no real engine
+  exists) and ideally paired with fixing FB-02 (Gemini-as-reasoning-fallback) first. A
+  third track, FB-09 (ContextBroker's three validation bugs), is already resolved per
+  commit 1dd7c6d.

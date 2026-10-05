@@ -377,6 +377,48 @@ Configured as Cloudflare Worker secrets (never in wrangler.toml):
 **localStorage keys:**
 - `dfactory_session_id`: current conversation ID (for resuming)
 - `dfactory_draft`: full draft state (for offline save)
+- `dfactory_ui_state`: app-shell UI state (active route only — see below)
+
+### App Shell (FF-P04-01, D-NEW-001: extend vanilla JS in place)
+
+`app.js` grew a small, dependency-free shell on top of the existing
+conversation logic — no framework, no build step, no rewrite of the existing
+code:
+
+- **`Router`** — a hash-based client-side router (`#/`, `#/conversation`,
+  `#/success`, `#/history`, `#/settings`). `Router.register(path, handler)`
+  wires a route to a handler, `Router.navigate(path)` updates
+  `window.location.hash` and resolves it, and `Router.start()` listens for
+  `hashchange` (covers back/forward and manually-edited URLs) and resolves
+  the initial route on load. `Router.setNotFound(handler)` controls the
+  fallback for unknown hashes (redirects to `/`). The existing
+  `showChatSection()` / `showSuccessSection()` / `resetIntake()` functions
+  now call `Router.navigate(...)` instead of touching `classList` directly,
+  so the conversation flow's resulting DOM state is unchanged.
+- **`AppShellState`** — a tiny observable state container, independent of
+  the conversation `state` object, persisting only `{ activeRoute }` to its
+  own `dfactory_ui_state` localStorage key (never the existing
+  `dfactory_session_id` / `dfactory_draft` keys) so a page reload reopens on
+  the last-visited route.
+- **`showPage(name)`** — the single place that toggles `.hidden` across all
+  page sections (hero/chat/success/history/settings), sets `aria-current`
+  on the matching nav link, and calls `.focus()` on the shown section's
+  container (it has `tabindex="-1"`) so assistive tech announces the route
+  change.
+- **`createModal(modalEl, getFocusables)`** — a small reusable focus-trap
+  factory used for both the help and repo modals: `Escape` closes whichever
+  modal is open and restores focus to its trigger button; `Tab`/`Shift+Tab`
+  cycle and wrap focus within the modal's focusable controls instead of
+  escaping into the page behind it.
+
+Responsive layout is mobile-first CSS (Flexbox) with a `@media (max-width:
+640px)` compaction pass and a `@media (min-width: 1024px)` CSS Grid sidebar
+layout (nav becomes a left rail); no Bootstrap/Tailwind/framework was added.
+
+Covered by `factory/tests/test_intake_web_shell.py` (routing, state
+persistence/recovery, keyboard navigation, focus management, and a full
+regression pass of the pre-existing conversation-submission flow via
+`factory/tests/helpers/app_shell_driver.mjs`).
 
 ---
 
