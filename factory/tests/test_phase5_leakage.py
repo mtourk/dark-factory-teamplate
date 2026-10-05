@@ -41,7 +41,7 @@ class TestBuilderSealedBoundary:
 
     def test_builder_context_excludes_sealed_tests(self):
         """Builder context package explicitly excludes sealed tests."""
-        broker = ContextBroker("investisor", "RUN-seal001")
+        broker = ContextBroker("investisor", "RUN-seal0001")
         builder_package = broker.assemble_role_context(FactoryRole.BUILDER)
 
         # Verify exclusion is documented
@@ -50,7 +50,7 @@ class TestBuilderSealedBoundary:
 
     def test_builder_shared_artifacts_no_sealed_tests(self):
         """Builder shared artifacts do not include sealed test content."""
-        broker = ContextBroker("investisor", "RUN-seal002")
+        broker = ContextBroker("investisor", "RUN-seal0002")
         builder_package = broker.assemble_role_context(FactoryRole.BUILDER)
 
         # Shared artifacts should never contain sealed tests
@@ -60,7 +60,7 @@ class TestBuilderSealedBoundary:
 
     def test_builder_package_validation_catches_sealed_leak(self):
         """Package validation fails if sealed tests somehow appear."""
-        broker = ContextBroker("investisor", "RUN-seal003")
+        broker = ContextBroker("investisor", "RUN-seal0003")
         package = broker.assemble_role_context(FactoryRole.BUILDER)
 
         # Inject sealed tests (simulate attack)
@@ -80,7 +80,7 @@ class TestReviewerBuilderChatBoundary:
 
     def test_reviewer_context_excludes_builder_chat(self):
         """Reviewer context package explicitly excludes builder chat."""
-        broker = ContextBroker("investisor", "RUN-chat001")
+        broker = ContextBroker("investisor", "RUN-chata001")
         reviewer_package = broker.assemble_role_context(FactoryRole.REVIEWER)
 
         # Verify exclusion is documented
@@ -89,7 +89,7 @@ class TestReviewerBuilderChatBoundary:
 
     def test_reviewer_shared_artifacts_no_builder_chat(self):
         """Reviewer shared artifacts do not include builder conversation."""
-        broker = ContextBroker("investisor", "RUN-chat002")
+        broker = ContextBroker("investisor", "RUN-chata002")
         reviewer_package = broker.assemble_role_context(FactoryRole.REVIEWER)
 
         shared_json = json.dumps(reviewer_package.shared_artifacts)
@@ -99,7 +99,7 @@ class TestReviewerBuilderChatBoundary:
 
     def test_reviewer_package_validation_catches_chat_leak(self):
         """Package validation fails if builder chat somehow appears."""
-        broker = ContextBroker("investisor", "RUN-chat003")
+        broker = ContextBroker("investisor", "RUN-chata003")
         package = broker.assemble_role_context(FactoryRole.REVIEWER)
 
         # Inject builder chat (simulate attack)
@@ -121,7 +121,7 @@ class TestReviewerRepairLogBoundary:
 
     def test_reviewer_context_excludes_repair_logs(self):
         """Reviewer context package explicitly excludes repair logs."""
-        broker = ContextBroker("investisor", "RUN-repair001")
+        broker = ContextBroker("investisor", "RUN-repair01")
         reviewer_package = broker.assemble_role_context(FactoryRole.REVIEWER)
 
         # Verify exclusion is documented
@@ -130,7 +130,7 @@ class TestReviewerRepairLogBoundary:
 
     def test_reviewer_shared_artifacts_no_repair_attempts(self):
         """Reviewer shared artifacts do not include repair history."""
-        broker = ContextBroker("investisor", "RUN-repair002")
+        broker = ContextBroker("investisor", "RUN-repair02")
         reviewer_package = broker.assemble_role_context(FactoryRole.REVIEWER)
 
         shared_json = json.dumps(reviewer_package.shared_artifacts)
@@ -140,7 +140,7 @@ class TestReviewerRepairLogBoundary:
 
     def test_reviewer_package_validation_catches_repair_leak(self):
         """Package validation fails if repair logs somehow appear."""
-        broker = ContextBroker("investisor", "RUN-repair003")
+        broker = ContextBroker("investisor", "RUN-repair03")
         package = broker.assemble_role_context(FactoryRole.REVIEWER)
 
         # Inject repair logs (simulate attack)
@@ -162,7 +162,7 @@ class TestSealedToBuildBoundary:
 
     def test_builder_context_excludes_mutations(self):
         """Builder cannot see mutation definitions."""
-        broker = ContextBroker("investisor", "RUN-mut001")
+        broker = ContextBroker("investisor", "RUN-mut00001")
         builder_package = broker.assemble_role_context(FactoryRole.BUILDER)
 
         exclusions = [e["excluded_type"] for e in builder_package.manifest.exclusions]
@@ -170,7 +170,7 @@ class TestSealedToBuildBoundary:
 
     def test_builder_context_excludes_reviewer_rubric(self):
         """Builder cannot see reviewer evaluation rubric."""
-        broker = ContextBroker("investisor", "RUN-rub001")
+        broker = ContextBroker("investisor", "RUN-rub00001")
         builder_package = broker.assemble_role_context(FactoryRole.BUILDER)
 
         exclusions = [e["excluded_type"] for e in builder_package.manifest.exclusions]
@@ -178,7 +178,7 @@ class TestSealedToBuildBoundary:
 
     def test_builder_package_validation_catches_mutations_leak(self):
         """Package validation fails if mutations appear."""
-        broker = ContextBroker("investisor", "RUN-mut002")
+        broker = ContextBroker("investisor", "RUN-mut00002")
         package = broker.assemble_role_context(FactoryRole.BUILDER)
 
         package.shared_artifacts["mutation_definitions"] = {"mutate": "logic"}
@@ -196,7 +196,7 @@ class TestManifestIntegrity:
 
     def test_manifest_hash_mismatch_detected(self, tmp_path):
         """Stored manifest hash mismatch detected (tampering)."""
-        broker = ContextBroker("investisor", "RUN-int001")
+        broker = ContextBroker("investisor", "RUN-int00001")
         package = broker.assemble_role_context(FactoryRole.BUILDER)
 
         # Store package
@@ -208,7 +208,7 @@ class TestManifestIntegrity:
 
     def test_tampered_manifest_rejected(self, tmp_path):
         """Tampered manifest is rejected during load."""
-        broker = ContextBroker("investisor", "RUN-int002")
+        broker = ContextBroker("investisor", "RUN-int00002")
         package = broker.assemble_role_context(FactoryRole.BUILDER)
 
         # Store package
@@ -228,7 +228,7 @@ class TestManifestIntegrity:
 
     def test_manifest_missing_hash_fails_closed(self):
         """Missing manifest hash causes fail-closed rejection."""
-        broker = ContextBroker("investisor", "RUN-int003")
+        broker = ContextBroker("investisor", "RUN-int00003")
         package = broker.assemble_role_context(FactoryRole.BUILDER)
 
         # Clear manifest hash (simulate missing metadata)
@@ -248,8 +248,8 @@ class TestRunToRunBoundary:
 
     def test_different_runs_have_different_packages(self):
         """Different runs create separate context packages."""
-        broker1 = ContextBroker("investisor", "RUN-a001")
-        broker2 = ContextBroker("investisor", "RUN-a002")
+        broker1 = ContextBroker("investisor", "RUN-aaaaa001")
+        broker2 = ContextBroker("investisor", "RUN-aaaaa002")
 
         package1 = broker1.assemble_role_context(FactoryRole.BUILDER)
         package2 = broker2.assemble_role_context(FactoryRole.BUILDER)
@@ -263,8 +263,8 @@ class TestRunToRunBoundary:
 
     def test_different_runs_have_isolated_directories(self):
         """Different runs use different private directories."""
-        broker1 = ContextBroker("investisor", "RUN-b001")
-        broker2 = ContextBroker("investisor", "RUN-b002")
+        broker1 = ContextBroker("investisor", "RUN-bbbbb001")
+        broker2 = ContextBroker("investisor", "RUN-bbbbb002")
 
         dir1 = broker1.get_role_private_dir(FactoryRole.BUILDER)
         dir2 = broker2.get_role_private_dir(FactoryRole.BUILDER)
@@ -272,8 +272,8 @@ class TestRunToRunBoundary:
         # Different directories
         assert dir1 != dir2
         # Both under Factory root but separate
-        assert "RUN-b001" in str(dir1)
-        assert "RUN-b002" in str(dir2)
+        assert "RUN-bbbbb001" in str(dir1)
+        assert "RUN-bbbbb002" in str(dir2)
 
 
 # ============================================================================
@@ -285,8 +285,8 @@ class TestProjectToProjectBoundary:
 
     def test_different_projects_have_isolated_contexts(self):
         """Different projects create isolated contexts."""
-        broker1 = ContextBroker("investisor", "RUN-p001")
-        broker2 = ContextBroker("other-project", "RUN-p001")  # Same run ID but different project
+        broker1 = ContextBroker("investisor", "RUN-ppppp001")
+        broker2 = ContextBroker("other-project", "RUN-ppppp001")  # Same run ID but different project
 
         package1 = broker1.assemble_role_context(FactoryRole.BUILDER)
         package2 = broker2.assemble_role_context(FactoryRole.BUILDER)
@@ -306,7 +306,7 @@ class TestRoleIsolationFailClosed:
 
     def test_missing_manifest_causes_fail_closed(self):
         """Missing context manifest causes fail-closed rejection."""
-        broker = ContextBroker("investisor", "RUN-fc001")
+        broker = ContextBroker("investisor", "RUN-fc000001")
 
         # Try to load context that was never stored
         with pytest.raises(ContextPolicyViolation, match="not found"):
@@ -314,7 +314,7 @@ class TestRoleIsolationFailClosed:
 
     def test_invalid_manifest_causes_fail_closed(self):
         """Invalid manifest JSON causes fail-closed rejection."""
-        broker = ContextBroker("investisor", "RUN-fc002")
+        broker = ContextBroker("investisor", "RUN-fc000002")
 
         # Create invalid manifest file
         private_dir = broker.get_role_private_dir(FactoryRole.BUILDER)
@@ -327,7 +327,7 @@ class TestRoleIsolationFailClosed:
 
     def test_unauthorized_context_access_raises_exception(self):
         """Any unauthorized context access raises ContextPolicyViolation."""
-        broker = ContextBroker("investisor", "RUN-fc003")
+        broker = ContextBroker("investisor", "RUN-fc000003")
         package = broker.assemble_role_context(FactoryRole.BUILDER)
 
         # Attempt to add unauthorized data
@@ -353,7 +353,7 @@ def test_phase5_gate_context_isolation_operational():
     - Package storage and loading with verification
     """
     # Create broker
-    broker = ContextBroker("test-project", "RUN-gate001")
+    broker = ContextBroker("test-project", "RUN-gate0001")
 
     # Assemble packages for different roles
     builder_pkg = broker.assemble_role_context(FactoryRole.BUILDER)
