@@ -19,6 +19,8 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List
 from enum import Enum
 
+from factory.profiles import get_factory_root
+
 
 class AcceptanceCriaType(str, Enum):
     """Type of acceptance criterion."""
@@ -93,10 +95,12 @@ class SealedQABroker:
         Initialize sealed QA broker.
 
         Args:
-            sealed_dir: directory for sealed spec storage (default: C:/Factory/control/sealed)
+            sealed_dir: directory for sealed spec storage (default: resolved
+                via factory/profiles.py:get_factory_root() / "control/sealed",
+                i.e. FACTORY_ROOT env var or ~/.factory — FF-P01-01)
         """
         if sealed_dir is None:
-            sealed_dir = Path("C:/Factory/control/sealed")
+            sealed_dir = get_factory_root() / "control" / "sealed"
         self.sealed_dir = sealed_dir
         self.sealed_dir.mkdir(parents=True, exist_ok=True)
 

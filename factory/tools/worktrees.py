@@ -20,8 +20,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional
 
+from factory.profiles import get_factory_root
 
-FACTORY_ROOT = Path("C:/Factory")
+# FF-P01-01: resolved via factory/profiles.py (FACTORY_ROOT env var, else
+# ~/.factory) instead of a hardcoded Windows path, so this module works
+# unmodified on Windows/macOS/Linux.
+FACTORY_ROOT = get_factory_root()
 WORKTREES_DIR = FACTORY_ROOT / "worktrees"
 
 

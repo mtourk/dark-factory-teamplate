@@ -19,8 +19,12 @@ from sqlalchemy import (
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
-# SQLite database location (§6.6 storage)
-DB_PATH = Path("C:/Factory/state.db")
+from factory.profiles import get_factory_root
+
+# SQLite database location (§6.6 storage). FF-P01-01: resolved via
+# factory/profiles.py (FACTORY_ROOT env var, else ~/.factory) instead of a
+# hardcoded Windows path, so this module works unmodified on Windows/macOS/Linux.
+DB_PATH = get_factory_root() / "state.db"
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 engine = create_engine(f"sqlite:///{DB_PATH}", echo=False)
@@ -54,7 +58,7 @@ class Run(Base):
 
     # Git/GitHub state
     branch_name = Column(String(256))  # factory/RUN-...-slug
-    worktree_path = Column(String(512))  # C:\Factory\worktrees\RUN-...
+    worktree_path = Column(String(512))  # <factory_root>/worktrees/RUN-... (factory/profiles.py:get_factory_root)
     base_sha = Column(String(40))  # main at claim time
     head_sha = Column(String(40))  # final commit
     pr_number = Column(Integer)

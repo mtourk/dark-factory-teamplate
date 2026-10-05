@@ -287,3 +287,29 @@ blockers:
     owner: "agent (fix completed 2026-10-05)"
     opened_at: "2026-10-05"
     closed_at: "2026-10-05"
+
+  - id: FB-12
+    title: "factory/state.py's module-level SQLAlchemy engine is bound to one real on-disk SQLite file (ignores conftest.py's FACTORY_DB=:memory: fixture entirely); full-suite pytest runs intermittently fail/error depending on what's already on disk at DB_PATH"
+    severity: medium
+    category: test-bug
+    status: open
+    discovered_in: "FF-P01-01 remediation agent, while verifying the hardcoded-C:\\Factory-path fix (factory/state.py, factory/context/broker.py, factory/implementation/workspace.py, factory/sealed_qa/acceptance.py, factory/tools/worktrees.py) did not change pytest results"
+    evidence:
+      - "factory/tests/conftest.py's session-scoped `setup_test_db` fixture sets `os.environ[\"FACTORY_DB\"] = \":memory:\"`, but factory/state.py never reads a FACTORY_DB env var — DB_PATH is a module-level constant computed once at import time (now `get_factory_root() / \"state.db\"`, previously the literal `C:/Factory/state.db`), and `engine`/`SessionLocal` are bound to that single real file for the whole process. The fixture is dead code with respect to isolating state.py's own engine."
+      - "`python -m pytest factory/tests/ -q` (full suite, this session, after the FF-P01-01 path fix): 34 failed, 382 passed, 9 errors — spanning test_phase3_core, test_phase4_backlog, test_phase6_gateway, test_phase7_bmad_critics, test_phase8_tools_worktrees (1), test_phase12_github, test_phase13_cloudflare_deploy, test_schemas_phase2, plus the 8 already-known/tracked test_phase5_leakage.py failures (FB-11, unrelated, already resolved/accepted as out-of-scope test-assertion bugs)."
+      - "Isolated A/B check to rule out the path refactor as the cause: re-ran the identical full suite with `FACTORY_ROOT=C:/Factory` (the old hardcoded location, which already had an accumulated state.db from many prior sessions on this machine) — still 38 failed, 377 passed, 10 errors, a similar-magnitude but non-identical failure set. Failure count is NOT stable between runs/paths, which is itself evidence of shared, order-dependent on-disk state rather than a regression tied to a specific path value."
+      - "Running only the modules directly exercising the 5 files this item touches, in isolation (test_profiles.py, test_workspace.py, test_context_broker.py, test_context_isolation_builder.py, test_phase9_sealed_qa.py, test_phase8_tools_worktrees.py, test_sealed_qa_runner.py): 102 passed, 1 failed. The 1 failure (test_phase8_tools_worktrees.py::TestSecretAccessRestrictions::test_builder_denied_secret_access) is an AuthorizationBroker secret-access decision-logic assertion (DENIED vs REQUIRES_HUMAN_DECISION) with no path/storage involvement at all — pre-existing, unrelated to this item."
+    blocks: []
+    impact: >
+      Full-suite `pytest factory/tests/` is not reliably green on a long-lived dev machine once
+      state.py's real on-disk DB_PATH accumulates data across many sessions/runs, independent of
+      which root path it resolves to. This is a test-isolation defect in the same family as FB-11
+      (a different file, same root cause class: tests assuming isolation that the fixture layer
+      doesn't actually provide), not a regression introduced by FF-P01-01's path-portability fix,
+      and not blocking FF-P01-01 itself (none of the fix's own target files/tests are implicated).
+    remediation:
+      - "Make factory/state.py read FACTORY_DB (or similar) at engine-creation time so conftest.py's existing `:memory:` fixture actually takes effect, OR refactor state.py to build the engine lazily per-call instead of once at import time, so tests can inject an isolated DB_PATH the way factory/sealed_qa/acceptance.py's SealedQABroker.__init__(sealed_dir=...) already allows for its own storage."
+      - "Audit the other full-suite-only failures (test_phase3/4/6/7/12/13, test_schemas_phase2) individually once isolation is fixed, to confirm which are real assertion bugs vs. further symptoms of shared state."
+    owner: "unassigned — flagged per docs/operations/CROSS_MACHINE_DEV_WORKFLOW.md §3.7 (stay in scope; file discovered-but-out-of-scope issues rather than silently patching them)"
+    opened_at: "2026-10-05"
+    closed_at: null

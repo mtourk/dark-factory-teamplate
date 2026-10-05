@@ -17,9 +17,12 @@ import os
 import subprocess
 from pathlib import Path
 
-from factory.profiles import Profile
+from factory.profiles import Profile, get_workspace_root
 
-DEFAULT_WORKSPACES_ROOT = Path(os.environ.get("FACTORY_WORKSPACES_ROOT", "C:/Factory/workspaces"))
+# FF-P01-01: resolved via factory/profiles.py (FACTORY_WORKSPACES_ROOT env
+# var, else get_factory_root()/"workspaces") instead of a hardcoded Windows
+# path, so this module works unmodified on Windows/macOS/Linux.
+DEFAULT_WORKSPACES_ROOT = get_workspace_root()
 
 
 class WorkspaceError(Exception):

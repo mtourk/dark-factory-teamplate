@@ -20,11 +20,11 @@ deliverables:
   - "portable bootstrap"
   - "secret references"
   - "configuration UI"
-overall_status: not_started
+overall_status: implemented_unverified  # the C:\Factory-path half is done (this session); config/defaults.json externalization half remains not_started — see full_evidence
 priority: critical  # raised from high, 2026-10-05, to support cross-machine dev workflow — see docs/operations/CROSS_MACHINE_DEV_WORKFLOW.md
 items:
   - id: FF-P01-01
-    status: not_started
-    blocker_id: null
+    status: implemented_unverified
+    blocker_id: null  # FB-12 (test-isolation, discovered while verifying this item) does NOT gate FF-P01-01 itself — see blockers.yml:FB-12
     decision_id: null
     full_evidence: "see implementation-status.yml:FF-P01-01"

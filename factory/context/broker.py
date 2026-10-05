@@ -39,9 +39,13 @@ from typing import Dict, Any, List, Optional, Set
 from pydantic import BaseModel, ValidationError
 
 from factory.models import ContextManifest, FactoryRole, SourceArtifact, ContextExclusion, PolicyDecision, ContextIsolationLevel
+from factory.profiles import get_factory_root
 
 
-FACTORY_ROOT = Path("C:/Factory")
+# FF-P01-01: resolved via factory/profiles.py (FACTORY_ROOT env var, else
+# ~/.factory) instead of a hardcoded Windows path, so this module works
+# unmodified on Windows/macOS/Linux.
+FACTORY_ROOT = get_factory_root()
 CONTROL_DIR = FACTORY_ROOT / "control"
 SEALED_DIR = CONTROL_DIR / "sealed"
 MUTATIONS_DIR = CONTROL_DIR / "mutations"

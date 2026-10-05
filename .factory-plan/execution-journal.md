@@ -286,3 +286,85 @@ well-scoped enough to do inline with the same independent-verification disciplin
 re-prioritization) and the handoff doc are complete; `.factory-plan/` artifacts updated to match.
 Next: commit this batch, then report the exact "how to invoke the next session on the Mac"
 instructions back to the user.
+
+---
+
+## 2026-10-05 — FF-P01-01 (C:\Factory hardcoded-path half) implemented_unverified
+
+**Scope:** exactly the 5 Python files named in `implementation-status.yml:FF-P01-01`'s evidence
+(`factory/context/broker.py`, `factory/state.py`, `factory/implementation/workspace.py`,
+`factory/sealed_qa/acceptance.py`, `factory/tools/worktrees.py`). The config/defaults.json +
+`wrangler.toml`/`index.ts` installation-config-externalization half of this same item's title was
+explicitly out of scope for this pass and remains `not_started` — not silently dropped, just not
+touched this session.
+
+**What was done:**
+1. Extended `factory/profiles.py` (its existing multi-profile mechanism) with two new functions
+   rather than inventing new infrastructure: `get_factory_root()` (precedence: `FACTORY_ROOT` env
+   var, else `Path.home() / ".factory"`) and `get_workspace_root()` (`FACTORY_WORKSPACES_ROOT` env
+   var, else `get_factory_root() / "workspaces"`). Both return `pathlib.Path`; neither hardcodes a
+   drive letter, backslash, or any other OS-specific assumption.
+2. Replaced every `Path("C:/Factory...")` / `Path("C:\\Factory...")` literal in the 5 target files
+   with calls to these two functions:
+   - `broker.py`: `FACTORY_ROOT = get_factory_root()`.
+   - `state.py`: `DB_PATH = get_factory_root() / "state.db"`.
+   - `workspace.py`: `DEFAULT_WORKSPACES_ROOT = get_workspace_root()` (previously read
+     `FACTORY_WORKSPACES_ROOT` itself but hardcoded the fallback; now delegates the whole
+     fallback chain to `profiles.py`).
+   - `acceptance.py`: `SealedQABroker.__init__`'s default `sealed_dir` is now
+     `get_factory_root() / "control" / "sealed"` (resolved lazily at call time, not at import
+     time, so no reload gymnastics were needed to test it).
+   - `worktrees.py`: `FACTORY_ROOT = get_factory_root()`.
+   All sub-paths continue to compose via `pathlib`'s `/` operator only — no manual string/
+   backslash concatenation anywhere.
+3. Added `factory/tests/test_portability.py` (21 new tests): `get_factory_root()`/
+   `get_workspace_root()` env-var precedence and cross-platform default; a static regex guarantee
+   that none of the 5 target files construct a `Path(...)` from a hardcoded `C:\...`/`C:/...`
+   literal; and — via subprocess re-imports rather than in-process `importlib.reload()` (reload
+   rebinds class identities and broke `isinstance()` checks in `test_context_broker.py` when first
+   tried; subprocess avoids that entirely) — confirmation that each of the 5 modules' module-level
+   path constant actually moves when `FACTORY_ROOT`/`FACTORY_WORKSPACES_ROOT` is set, including
+   Unix-style (forward-slash, no drive letter) values simulating a macOS/Linux dev machine.
+
+**Testing (evidence over claims — see implementation-status.yml:FF-P01-01 for the full text):**
+- `pytest factory/tests/test_portability.py -v`: **21/21 passed**.
+- The 8 existing suites most directly tied to the 5 modified files, run together with the new
+  file: **138 passed, 8 failed**. All 8 failures are pre-existing and unrelated: 7 are
+  `test_phase5_leakage.py` assertion-logic failures already tracked/accepted as out-of-scope by
+  blocker **FB-11** (resolved earlier today); 1 is
+  `test_phase8_tools_worktrees.py::TestSecretAccessRestrictions::test_builder_denied_secret_access`,
+  an `AuthorizationBroker` decision-logic bug with zero path/storage involvement. **Zero
+  regressions caused by this item.**
+- Full `pytest factory/tests/ -q`: 34–38 failed / 382–398 passed / 9–10 errors, **not stable
+  run-to-run**. Investigated directly rather than assumed benign: root cause is
+  `factory/state.py`'s module-level SQLAlchemy `engine`, bound once at import time to one real
+  on-disk SQLite file; `conftest.py`'s `FACTORY_DB=":memory:"` fixture is dead code that
+  `state.py` never reads, so the full suite shares real, accumulating on-disk state across
+  modules/sessions. Confirmed via A/B check that this is **not** a regression from this item: re-ran
+  the identical full suite with `FACTORY_ROOT` forced back to the old hardcoded `C:/Factory`
+  location (which already had months of accumulated `state.db` on this machine) — still got a
+  similar-magnitude, differently-shaped failure set (38 failed/377 passed/10 errors). Filed as new
+  blocker **FB-12** (`.factory-plan/blockers.yml`) rather than silently fixed, per
+  `CROSS_MACHINE_DEV_WORKFLOW.md` §3.7 (stay in scope; flag discovered-but-out-of-scope issues).
+  FB-12 does not block FF-P01-01 itself.
+- **Ollama/D1/wrangler-dependent verification: deferred to the Windows-side independent
+  re-verification pass**, per this task's explicit instruction, even though this machine has local
+  Ollama/wrangler available — none of the 5 modified files call Ollama/D1/wrangler directly (they
+  only resolve local filesystem storage paths), but real end-to-end exercise of
+  `factory/implementation/workspace.py:ensure_workspace()` against a live target repo, and a real
+  D1/Ollama-dependent `factory run`, were not performed this session and should be before promoting
+  to `verified_complete`.
+
+**Artifacts updated:** `implementation-status.yml` (FF-P01-01 → `implemented_unverified`, full
+verification_evidence recorded, missing_work/acceptance_criteria annotated with what's actually
+met vs. still open), `backlog.yml` (status field synced to `implemented_unverified`;
+`next_eligible_item` left unchanged at `FF-P01-01` per this task's instruction — Windows-side
+verification is still pending against the same item), `dependency-graph.yml` and
+`phases/phase-01-config-portability.yml` (status synced), `blockers.yml` (new **FB-12** filed,
+open, unassigned).
+
+**Status:** implemented_unverified. **VERIFICATION DEFERRED TO WINDOWS SESSION** — cross-platform
+path refactor not yet run against Ollama/D1 code paths; those test on Windows. Next: commit this
+batch; Windows-side session independently re-runs the verification_commands above plus the
+Ollama/D1/wrangler-dependent paths, triages FB-12, and only then flips FF-P01-01 to
+`verified_complete`.

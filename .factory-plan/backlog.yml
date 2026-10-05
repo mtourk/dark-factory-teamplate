@@ -63,7 +63,7 @@ queue:
   - id: FF-P01-01
     phase: config-portability
     priority: critical
-    status: not_started
+    status: implemented_unverified
     dependencies: []
     blocker_id: null
     note: >
@@ -75,6 +75,15 @@ queue:
       implementation-status.yml:FF-P01-01. Elevated ahead of FF-P05-01 so storage/workspace
       path portability is fixed before more Mac-authored code lands on top of it. See
       docs/operations/CROSS_MACHINE_DEV_WORKFLOW.md.
+      UPDATE 2026-10-05 (same day, implemented_unverified): the 'C:\Factory'-path half is fixed —
+      all 5 files now resolve storage roots via new factory/profiles.py:get_factory_root()/
+      get_workspace_root() helpers (FACTORY_ROOT/FACTORY_WORKSPACES_ROOT env vars, else
+      Path.home()/".factory"). The config/defaults.json externalization half (wrangler.toml,
+      index.ts) was explicitly out of scope for this pass and remains not_started. VERIFICATION
+      DEFERRED TO WINDOWS SESSION per docs/operations/CROSS_MACHINE_DEV_WORKFLOW.md — see
+      implementation-status.yml:FF-P01-01 for full test evidence, and blockers.yml:FB-12 for a
+      newly discovered, unrelated pre-existing test-isolation defect flagged (not fixed) during
+      verification.
   - id: FF-P04-01
     phase: app-shell
     priority: high

@@ -36,6 +36,59 @@ PROFILES_DIR = Path("profiles")
 
 FACTORY_PROFILE_ENV_VAR = "FACTORY_PROFILE"
 
+# FF-P01-01: the factory's local storage root (worktrees, control data,
+# state DB, sealed QA specs — master plan §6.6) and the workspaces root
+# (factory/implementation/workspace.py) used to be hardcoded to
+# `C:/Factory`-style literals in several modules, which only worked on the
+# Windows machine that happened to have that directory. get_factory_root()
+# and get_workspace_root() are the single place that resolves those roots,
+# via pathlib.Path only (no OS-specific separators or drive letters), so the
+# same code runs unmodified on Windows, macOS, and Linux (see
+# docs/operations/CROSS_MACHINE_DEV_WORKFLOW.md).
+FACTORY_ROOT_ENV_VAR = "FACTORY_ROOT"
+FACTORY_WORKSPACES_ROOT_ENV_VAR = "FACTORY_WORKSPACES_ROOT"
+
+
+def get_factory_root() -> Path:
+    """
+    Resolve the Dark Factory's local storage root.
+
+    Precedence:
+      1. `FACTORY_ROOT` environment variable (any OS, any path style the
+         caller's shell provides).
+      2. `~/.factory` — resolved via `pathlib.Path.home()`, which is portable
+         across Windows (`C:\\Users\\<user>\\.factory`), macOS, and Linux
+         (`/home/<user>/.factory`). No hardcoded drive letter or separator.
+
+    Callers (factory/context/broker.py, factory/state.py,
+    factory/sealed_qa/acceptance.py, factory/tools/worktrees.py) build
+    sub-paths off this with `Path.__truediv__` (`/`), which is also
+    separator-portable.
+    """
+    import os
+
+    env_value = os.environ.get(FACTORY_ROOT_ENV_VAR)
+    if env_value:
+        return Path(env_value)
+    return Path.home() / ".factory"
+
+
+def get_workspace_root() -> Path:
+    """
+    Resolve the root directory under which each profile's disposable local
+    git checkout lives (factory/implementation/workspace.py:ensure_workspace).
+
+    Precedence:
+      1. `FACTORY_WORKSPACES_ROOT` environment variable.
+      2. `get_factory_root() / "workspaces"`.
+    """
+    import os
+
+    env_value = os.environ.get(FACTORY_WORKSPACES_ROOT_ENV_VAR)
+    if env_value:
+        return Path(env_value)
+    return get_factory_root() / "workspaces"
+
 
 class ProfileNotFoundError(Exception):
     """Raised when a named profile does not exist on disk."""
