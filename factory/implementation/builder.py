@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List
 
 from factory.context.broker import ContextBroker, ContextPolicyViolation
+from factory.llm import Capability, TaskRequirements
 from factory.models import FactoryRole
 
 
