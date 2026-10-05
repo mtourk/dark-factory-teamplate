@@ -400,6 +400,22 @@ class ImplementationOrchestrator:
                 self.finalize_run(run, ImplementationPhase.STOPPED, StopCondition.RESOURCE_EXHAUSTED)
                 return run
 
+            # Durable checkpoint after a side effect (files written) — plan §36.
+            # If a provider fails during verification, a replacement can resume
+            # from here (verify the applied changes) without re-applying them.
+            self._persist(
+                state.save_checkpoint,
+                run_id=run.persisted_run_id,
+                step_id=f"attempt-{run.attempt_number}-applied",
+                step_status="in_progress",
+                agent_id="builder",
+                modified_files=list(builder_output.changed_files),
+                output_state={"patch_digest": builder_output.patch_digest},
+                last_successful_operation="apply_changes",
+                current_operation="verify",
+                resume_instructions="Re-run verification against the applied changes; do not re-apply.",
+            )
+
             self._persist(state.update_run, run.persisted_run_id, status="verifying", stage="verify")
             verify_started = datetime.utcnow()
             runner = VerificationRunner(repo_root=repo_root, stage_commands=stage_commands or [])

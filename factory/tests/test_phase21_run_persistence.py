@@ -125,3 +125,57 @@ def test_orchestrator_without_session_persists_nothing():
         requirement_summary="", allowed_fix_scope="",
     )
     assert session.query(state.Run).count() == 0
+
+
+# ---------------------------------------------------------------------------
+# FF-P21-02: checkpoints & resume
+# ---------------------------------------------------------------------------
+
+def _seed_run(session, run_id="RUN-1", project="proj", issue=7, status="implementing"):
+    state.ensure_project(session, project, f"https://github.com/x/{project}")
+    return state.create_or_reset_run(session, run_id, project, issue, status=status)
+
+
+def test_save_checkpoint_upserts_and_latest_returns_newest():
+    session = state.init_db()
+    _seed_run(session)
+
+    state.save_checkpoint(
+        session, "RUN-1", step_id="attempt-1-applied", step_status="in_progress",
+        modified_files=["a.py"], current_operation="verify",
+    )
+    # Same step id -> upsert (no second row).
+    state.save_checkpoint(
+        session, "RUN-1", step_id="attempt-1-applied", step_status="completed",
+        modified_files=["a.py", "b.py"], current_operation="review",
+    )
+    assert session.query(state.TaskCheckpoint).filter_by(run_id="RUN-1").count() == 1
+
+    cp = state.latest_checkpoint(session, "RUN-1")
+    assert cp.step_status == "completed"
+    assert cp.modified_files == ["a.py", "b.py"]
+    assert cp.current_operation == "review"
+
+
+def test_list_resumable_runs_excludes_terminal():
+    session = state.init_db()
+    state.ensure_project(session, "proj", "https://github.com/x/proj")
+    state.create_or_reset_run(session, "RUN-A", "proj", 1, status="implementing")
+    state.create_or_reset_run(session, "RUN-B", "proj", 2, status="verifying")
+    state.create_or_reset_run(session, "RUN-C", "proj", 3, status="closed")
+    state.create_or_reset_run(session, "RUN-D", "proj", 4, status="failed")
+
+    resumable = state.list_resumable_runs(session, project_id="proj")
+    ids = {r.id for r in resumable}
+    assert ids == {"RUN-A", "RUN-B"}  # terminal (closed/failed) excluded
+
+
+def test_list_resumable_runs_scopes_by_project():
+    session = state.init_db()
+    state.ensure_project(session, "proj", "https://github.com/x/proj")
+    state.ensure_project(session, "other", "https://github.com/x/other")
+    state.create_or_reset_run(session, "RUN-A", "proj", 1, status="implementing")
+    state.create_or_reset_run(session, "RUN-B", "other", 1, status="implementing")
+
+    assert {r.id for r in state.list_resumable_runs(session, project_id="proj")} == {"RUN-A"}
+    assert {r.id for r in state.list_resumable_runs(session)} == {"RUN-A", "RUN-B"}  # all projects

@@ -317,6 +317,130 @@ class EmergencyStop(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class TaskCheckpoint(Base):
+    """Durable, resumable snapshot of where a task/run is (FF-P21-02, plan §40).
+
+    A checkpoint is written after each meaningful step/side-effect so that a
+    different model/provider can continue from the exact point of failure
+    rather than restarting. State is stored model-neutrally (structured JSON),
+    not as natural-language conversation (plan §52).
+    """
+    __tablename__ = "task_checkpoints"
+
+    id = Column(String(128), primary_key=True)  # e.g. "RUN-...-step-5"
+    run_id = Column(String(64), ForeignKey("runs.id"), nullable=False)
+    task_id = Column(String(128))
+    agent_id = Column(String(64))  # role/agent that produced this checkpoint
+
+    step_id = Column(String(64))
+    step_status = Column(String(32))  # pending, in_progress, completed, failed
+
+    # Structured, model-neutral state
+    input_state = Column(JSON)
+    output_state = Column(JSON)
+    completed_actions = Column(JSON)   # list of actions already done
+    pending_actions = Column(JSON)     # list of actions still to do
+    current_files = Column(JSON)       # files relevant to the current step
+    modified_files = Column(JSON)      # files already changed this task
+
+    # Repository continuity (plan §53)
+    git_commit = Column(String(40))
+    git_diff_hash = Column(String(64))
+
+    # Context / memory / handoff (populated more fully in later phases)
+    context_snapshot = Column(JSON)
+    memory_snapshot = Column(JSON)
+    handoff_summary = Column(Text)
+
+    last_successful_operation = Column(Text)
+    current_operation = Column(Text)
+    resume_instructions = Column(Text)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index("idx_checkpoint_run", "run_id"),
+    )
+
+
+class AgentRun(Base):
+    """One agent execution attempt against a task (FF-P21-02, plan §41).
+
+    Kept separate from the task/Run status: an attempt can FAIL while the task
+    remains resumable (plan §39). provider/credential/model are nullable until
+    the gateway lands (FF-P22-01).
+    """
+    __tablename__ = "agent_runs"
+
+    id = Column(String(128), primary_key=True)
+    agent_id = Column(String(64))
+    task_id = Column(String(128))
+    run_id = Column(String(64), ForeignKey("runs.id"), nullable=False)
+
+    model = Column(String(128))
+    provider = Column(String(64))
+    credential = Column(String(128))  # credential id/alias, never a secret value
+
+    started_at = Column(DateTime, default=datetime.utcnow)
+    finished_at = Column(DateTime)
+
+    status = Column(String(32))  # pending, running, succeeded, failed, cancelled, rate_limited, quota_exhausted, timed_out
+    attempt_number = Column(Integer, default=1)
+
+    input_tokens = Column(Integer)
+    output_tokens = Column(Integer)
+
+    failure_reason = Column(Text)
+    checkpoint_id = Column(String(128), ForeignKey("task_checkpoints.id"))
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("idx_agentrun_run", "run_id"),
+    )
+
+
+class LLMRequest(Base):
+    """One LLM request attempt, for observability + routing analytics (plan §42).
+
+    Written by the gateway (FF-P22-01) / observability layer (FF-P23-01); the
+    schema is created here as part of the state foundation so later phases only
+    add writers, not migrations.
+    """
+    __tablename__ = "llm_requests"
+
+    request_id = Column(String(128), primary_key=True)
+    run_id = Column(String(64), ForeignKey("runs.id"))
+    task_id = Column(String(128))
+    agent_id = Column(String(64))
+    attempt_id = Column(String(128))
+
+    provider = Column(String(64))
+    credential = Column(String(128))  # credential id/alias, never a secret value
+    model = Column(String(128))
+
+    task_type = Column(String(64))
+
+    context_tokens = Column(Integer)
+    input_tokens = Column(Integer)
+    expected_output_tokens = Column(Integer)
+    actual_output_tokens = Column(Integer)
+
+    started_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime)
+
+    status = Column(String(32))
+    fallback_reason = Column(Text)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("idx_llmrequest_run", "run_id"),
+        Index("idx_llmrequest_provider", "provider"),
+    )
+
+
 # ============================================================================
 # Database Functions
 # ============================================================================
@@ -553,6 +677,97 @@ def record_stage(
     merged = session.merge(stage)
     session.commit()
     return merged
+
+
+# ============================================================================
+# Checkpoint & resume (FF-P21-02)
+# ============================================================================
+
+# Run statuses that mean a run was interrupted mid-flight and can be resumed.
+RESUMABLE_STATUSES = ("implementing", "verifying", "repairing", "analyzing", "planning")
+TERMINAL_STATUSES = ("closed", "failed", "quarantined")
+
+
+def save_checkpoint(
+    session: Session,
+    run_id: str,
+    step_id: str,
+    step_status: str,
+    agent_id: Optional[str] = None,
+    task_id: Optional[str] = None,
+    modified_files: Optional[list] = None,
+    current_files: Optional[list] = None,
+    completed_actions: Optional[list] = None,
+    pending_actions: Optional[list] = None,
+    git_commit: Optional[str] = None,
+    git_diff_hash: Optional[str] = None,
+    output_state: Optional[dict] = None,
+    last_successful_operation: Optional[str] = None,
+    current_operation: Optional[str] = None,
+    resume_instructions: Optional[str] = None,
+) -> TaskCheckpoint:
+    """Upsert a durable checkpoint for a run step.
+
+    Keyed on `<run_id>-<step_id>` so re-checkpointing the same step updates the
+    row (idempotent resume). Returns the persisted checkpoint.
+    """
+    checkpoint = TaskCheckpoint(
+        id=f"{run_id}-{step_id}",
+        run_id=run_id,
+        task_id=task_id,
+        agent_id=agent_id,
+        step_id=step_id,
+        step_status=step_status,
+        modified_files=modified_files,
+        current_files=current_files,
+        completed_actions=completed_actions,
+        pending_actions=pending_actions,
+        git_commit=git_commit,
+        git_diff_hash=git_diff_hash,
+        output_state=output_state,
+        last_successful_operation=last_successful_operation,
+        current_operation=current_operation,
+        resume_instructions=resume_instructions,
+    )
+    merged = session.merge(checkpoint)
+    session.commit()
+    return merged
+
+
+def latest_checkpoint(session: Session, run_id: str) -> Optional[TaskCheckpoint]:
+    """Return the most recently updated checkpoint for a run, if any."""
+    return (
+        session.query(TaskCheckpoint)
+        .filter(TaskCheckpoint.run_id == run_id)
+        .order_by(TaskCheckpoint.updated_at.desc())
+        .first()
+    )
+
+
+def list_resumable_runs(session: Session, project_id: Optional[str] = None) -> list:
+    """Return runs that were interrupted mid-flight (non-terminal status).
+
+    These are candidates for `factory resume`. Optionally scoped to one project.
+    """
+    query = session.query(Run).filter(Run.status.in_(RESUMABLE_STATUSES))
+    if project_id is not None:
+        query = query.filter(Run.project_id == project_id)
+    return query.order_by(Run.claimed_at.asc()).all()
+
+
+def get_run(session: Session, run_id: str) -> Optional[Run]:
+    """Fetch one Run row by id."""
+    return session.query(Run).filter(Run.id == run_id).first()
+
+
+def list_stages(session: Session, run_id: str) -> list:
+    """Return all Stage rows for a run, oldest first."""
+    return (
+        session.query(Stage)
+        .filter(Stage.run_id == run_id)
+        .order_by(Stage.created_at.asc())
+        .all()
+    )
 
 
 if __name__ == "__main__":

@@ -231,7 +231,7 @@ queue:
   - id: FF-P21-02
     phase: api-first-state-foundation
     priority: critical
-    status: not_started  # TaskCheckpoint/AgentRun/LLMRequest models + resume CLI
+    status: verified_complete  # TaskCheckpoint/AgentRun/LLMRequest models + save_checkpoint/latest_checkpoint/list_resumable_runs; `resume` + `status` CLI; orchestrator checkpoints after apply; UTF-8 console fix; +7 tests, 0 regressions
     dependencies: [FF-P21-01]
     blocker_id: null
   - id: FF-P22-01
@@ -307,17 +307,18 @@ queue:
     dependencies: [FF-P27-01, FF-P28-01, FF-P29-01]
     blocker_id: null
 
-next_eligible_item: FF-P21-02
+next_eligible_item: FF-P22-01
 next_eligible_item_rationale: >
   UPDATED 2026-10-05 (API-first migration): the user approved the API-First Multi-Provider LLM
   migration plan (see repo-root "Full API-First Multi-Provider Architecture..." md and
-  decisions.yml:D-NEW-005, which supersedes D-NEW-004's local-only mandate). This is now the active
-  priority track (FF-P2x). FF-P21-01 (durable Run/Stage persistence + FB-12 fix) is verified_complete.
-  FF-P21-02 (TaskCheckpoint/AgentRun/LLMRequest models + `resume` CLI) is the next unblocked item:
-  its only dependency (FF-P21-01) is verified_complete and it is the state foundation the gateway,
-  free-tier, routing, and handoff phases all build on. The pre-API-first queue below (FF-P01-01 etc.)
-  is paused but not discarded — several items (FF-P03/04/05) remain valid product-plane work and will
-  be re-sequenced against the migration once the LLM layer lands.
+  decisions.yml:D-NEW-005, which supersedes D-NEW-004's local-only mandate). FF-P21-01 (durable
+  Run/Stage persistence + FB-12) and FF-P21-02 (checkpoint/agent-run/llm-request models + resume/
+  status CLI) are both verified_complete — the state foundation is in place. FF-P22-01 (the
+  provider-agnostic LLM gateway over the LiteLLM Python SDK, wiring the dead gateway= seam and
+  replacing builder.py's direct Ollama call — which also resolves FB-02) is the next unblocked item;
+  it depends only on FF-P21-01. It adds `litellm` to pyproject.toml and creates the factory/llm/
+  package. The pre-API-first queue below (FF-P01-01 etc.) is paused but not discarded — several items
+  (FF-P03/04/05) remain valid product-plane work and will be re-sequenced once the LLM layer lands.
 superseded_next_eligible_item_rationale: >
   UPDATED 2026-10-05 (second update this day): FF-P04-01 (app shell) is implemented (85/85 tests
   passing), making FF-P05-01 (New Idea page) dependency-unblocked and the prior pick — see history

@@ -9,7 +9,7 @@ Commands per DARK_FACTORY_MASTER_PLAN.md §4.2:
 - run: execute factory workflow (claim → implement → deploy → close)
 - run -Once: single run, exit
 - pause: pause factory processing
-- resume-queue: resume paused queue
+- resume: resume runs interrupted mid-flight
 - emergency-stop: block new merges, record incident
 - queue: list eligible issues
 - status: show factory status
@@ -37,7 +37,10 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from factory.state import init_db, get_db_session, ensure_project
+from factory.state import (
+    init_db, get_db_session, ensure_project,
+    list_resumable_runs, latest_checkpoint, get_run, list_stages,
+)
 from factory.config import load_config
 from factory.profiles import (
     NoActiveProfileError,
@@ -62,6 +65,16 @@ app = typer.Typer(
 )
 profile_app = typer.Typer(name="profile", help="Manage per-project profiles (factory/profiles.py).")
 app.add_typer(profile_app, name="profile")
+
+# This is a Windows-native CLI whose output uses ✓/✗/⚠ glyphs. Under a legacy
+# console codepage (e.g. cp1252) writing those raises UnicodeEncodeError, so
+# force UTF-8 on the standard streams at startup. Guarded for environments where
+# the streams are already wrapped/replaced (e.g. pytest capture, pipes).
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
 
 console = Console()
 
@@ -352,11 +365,72 @@ def pause() -> None:
     console.print("[yellow]Pause command not yet implemented (Phase 4 state management)[/yellow]")
 
 
-@app.command()
-def resume_queue() -> None:
-    """Resume factory queue after pause."""
+@app.command(name="resume")
+def resume_queue(ctx: typer.Context) -> None:
+    """
+    Resume runs interrupted mid-flight (FF-P21-02).
+
+    Finds persisted runs for the active profile whose status is non-terminal
+    (implementing/verifying/repairing/...) — e.g. because the process was
+    killed or a provider failed — and re-dispatches each through the normal
+    build→verify→repair loop. Durable Run/Stage/Checkpoint state means a resume
+    continues the task rather than losing it; full state-aware single-step
+    resume (continue from the exact failed step) lands with agent handoff
+    (FF-P27-01).
+    """
+    active_profile = _resolve_profile_or_exit(ctx)
     console.print("[bold blue]Factory Resume[/bold blue]")
-    console.print("[yellow]Resume command not yet implemented (Phase 4 state management)[/yellow]")
+    console.print(f"[cyan]Profile:[/cyan] {active_profile.name} ({active_profile.target_repo.repo_string})")
+
+    try:
+        session = init_db()
+    except Exception as e:
+        console.print(f"[red]✗[/red] State database unavailable: {e}")
+        raise typer.Exit(code=1)
+
+    try:
+        resumable = list_resumable_runs(session, project_id=active_profile.name)
+        if not resumable:
+            console.print("[green]✓[/green] No interrupted runs to resume.")
+            return
+
+        console.print(f"Found {len(resumable)} interrupted run(s):")
+        for r in resumable:
+            cp = latest_checkpoint(session, r.id)
+            where = f" @ {cp.current_operation}" if cp and cp.current_operation else ""
+            console.print(f"  {r.id} (issue #{r.issue_number}, status={r.status}{where})")
+
+        try:
+            github = GitHubAdapter(
+                owner=active_profile.target_repo.owner,
+                repo=active_profile.target_repo.name,
+            )
+            workspace_path = ensure_workspace(active_profile)
+            stage_commands = stage_commands_from_profile_config(active_profile.verification_commands)
+        except (WorkspaceError, ValueError) as e:
+            console.print(f"[red]✗[/red] Could not prepare resume context: {e}")
+            raise typer.Exit(code=1)
+
+        orchestrator = ImplementationOrchestrator(
+            BuilderCoordinator(), state_session=session
+        )
+        for r in resumable:
+            console.print(f"[bold]→ Resuming issue #{r.issue_number}[/bold] ({r.id})")
+            try:
+                result = orchestrator.run_full_cycle(
+                    run_id=r.id,
+                    github_adapter=github,
+                    issue_number=r.issue_number,
+                    project_id=active_profile.name,
+                    repo_root=workspace_path,
+                    stage_commands=stage_commands,
+                )
+            except Exception as e:
+                console.print(f"  [red]✗ ERROR[/red]: {e}")
+                continue
+            _print_run_result(result)
+    finally:
+        session.close()
 
 
 @app.command()
@@ -399,9 +473,48 @@ def status(run_id: Optional[str] = typer.Option(None, help="Specific run ID")) -
     - factory status --RunId RUN-abc12345: detailed status of one run
     """
     console.print("[bold blue]Factory Status[/bold blue]")
-    if run_id:
-        console.print(f"[cyan]Run: {run_id}[/cyan]")
-    console.print("[yellow]Status command not yet implemented (Phase 3 state query)[/yellow]")
+    try:
+        session = init_db()
+    except Exception as e:
+        console.print(f"[red]✗[/red] State database unavailable: {e}")
+        raise typer.Exit(code=1)
+
+    try:
+        if run_id:
+            run = get_run(session, run_id)
+            if run is None:
+                console.print(f"[yellow]No run found with id {run_id}.[/yellow]")
+                return
+            console.print(
+                f"[cyan]Run {run.id}[/cyan] (issue #{run.issue_number}, project {run.project_id})"
+            )
+            console.print(f"  status={run.status}  stage={run.stage}  attempts={run.attempts}")
+            if run.completed_at:
+                console.print(f"  completed_at={run.completed_at}")
+            stages = list_stages(session, run_id)
+            if stages:
+                console.print("  stages:")
+                for s in stages:
+                    err = f" — {s.error_message}" if s.error_message else ""
+                    console.print(f"    [{s.status}] {s.stage_name} (attempt {s.attempt}){err}")
+            cp = latest_checkpoint(session, run_id)
+            if cp:
+                console.print(
+                    f"  last checkpoint: step={cp.step_id} status={cp.step_status} "
+                    f"op={cp.current_operation} files={cp.modified_files}"
+                )
+            return
+
+        # No run id: summarise interrupted runs across all projects.
+        resumable = list_resumable_runs(session)
+        if not resumable:
+            console.print("[green]✓[/green] No interrupted runs. Use 'factory status --RunId <id>' for details.")
+            return
+        console.print(f"[yellow]{len(resumable)} interrupted run(s)[/yellow] (resume with 'factory resume'):")
+        for r in resumable:
+            console.print(f"  {r.id} — issue #{r.issue_number} ({r.project_id}): {r.status}")
+    finally:
+        session.close()
 
 
 @app.command()

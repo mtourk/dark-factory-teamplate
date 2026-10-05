@@ -274,6 +274,61 @@ class TestRunResultPrinting:
         assert len(_StubOrchestrator.calls) == 2
 
 
+class TestResumeInterruptedRuns:
+    """`resume` re-dispatches persisted runs left in a non-terminal status (FF-P21-02)."""
+
+    def test_resume_redispatches_interrupted_run(self, profiles_dir):
+        from factory import state
+
+        _make_profile(profiles_dir)  # name=acme-widgets, repo acme/widgets
+        session = state.init_db()
+        state.ensure_project(session, "acme-widgets", "https://github.com/acme/widgets")
+        state.create_or_reset_run(session, "RUN-resume-1", "acme-widgets", 42, status="verifying")
+
+        result = runner.invoke(cli.app, ["resume"])
+        assert result.exit_code == 0, result.output
+        assert len(_StubOrchestrator.calls) == 1
+        assert _StubOrchestrator.calls[0]["run_id"] == "RUN-resume-1"
+        assert _StubOrchestrator.calls[0]["issue_number"] == 42
+
+    def test_resume_with_no_interrupted_runs_is_clean(self, profiles_dir):
+        _make_profile(profiles_dir)
+        result = runner.invoke(cli.app, ["resume"])
+        assert result.exit_code == 0, result.output
+        assert "No interrupted runs" in result.output
+        assert _StubOrchestrator.calls == []
+
+
+class TestStatusCommand:
+    """`status` reads durable run/stage/checkpoint state (FF-P21-02)."""
+
+    def test_status_lists_interrupted_runs(self, profiles_dir):
+        from factory import state
+
+        session = state.init_db()
+        state.ensure_project(session, "acme-widgets", "https://github.com/acme/widgets")
+        state.create_or_reset_run(session, "RUN-s1", "acme-widgets", 42, status="implementing")
+
+        result = runner.invoke(cli.app, ["status"])
+        assert result.exit_code == 0, result.output
+        assert "RUN-s1" in result.output
+
+    def test_status_for_specific_run_shows_stages(self, profiles_dir):
+        from datetime import datetime
+
+        from factory import state
+
+        session = state.init_db()
+        state.ensure_project(session, "acme-widgets", "https://github.com/acme/widgets")
+        state.create_or_reset_run(session, "RUN-s2", "acme-widgets", 7, status="closed")
+        state.record_stage(session, "RUN-s2", "build", 1, "passed", started_at=datetime.utcnow())
+
+        result = runner.invoke(cli.app, ["status", "--run-id", "RUN-s2"])
+        assert result.exit_code == 0, result.output
+        assert "RUN-s2" in result.output
+        assert "build" in result.output
+
+
 class TestRunWorkspaceFailure:
     def test_workspace_error_exits_with_code_1(self, profiles_dir, monkeypatch):
         from factory.implementation.workspace import WorkspaceError
