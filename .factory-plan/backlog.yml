@@ -38,10 +38,10 @@ queue:
   - id: FF-P03-01
     phase: auth-admin-secrets
     priority: critical
-    status: not_started
+    status: implemented_unverified
     dependencies: []
-    blocker_id: FB-03
-    note: "First real unblocked critical-path item. Everything cloud-facing (P04-P18) is gated behind this per §3.3's own fallback clause and FB-03."
+    blocker_id: FB-10
+    note: "RESOLVED 2026-10-05 (D-NEW-002 Option A, commit 7c854a2): Cloudflare Access JWT verification gates all 5 mutating routes, 11/11 tests passing. Not yet verified_complete because the real Access Application still needs creating in the dashboard (FB-10, human step) before it's actually live in production. Unblocks FF-P04-01, FF-P07-01 to start."
   - id: FF-P03-02
     phase: auth-admin-secrets
     priority: critical
@@ -197,13 +197,16 @@ queue:
       - FF-P17-01
     blocker_id: null
 
-next_eligible_item: FF-P03-01
+next_eligible_item: FF-P04-01
 next_eligible_item_rationale: >
-  FF-P00-01/02, FF-P12-01, and FF-P14-01 are already verified_complete (prior session's CLI-wiring
-  work plus this audit itself). FF-P02-01 (schema audit) is also verified_complete as a mapping
-  exercise. The next item whose dependencies are fully satisfied and that is not itself blocked
-  is FF-P03-01 (authentication) — it has no dependencies, is priority critical, and per
-  New_FEATURE_FACTORY_MASTER_PLAN.md §3.3's own fallback clause its absence is treated as a
-  blocking security item that gates nearly every cloud-facing phase (04 through 18). FB-03 records
-  this blocker; resolving it (a user/architecture decision: Cloudflare Access vs. custom users
-  table — see decisions.yml D-NEW-002) is the literal next action.
+  UPDATED 2026-10-05: FF-P03-01 (auth) is now implemented_unverified (commit 7c854a2, 11/11 tests
+  passing) and FB-07 (context isolation) is resolved (commit a6d24e8d, 5/5 tests passing), both
+  independently re-verified this session. FF-P04-01 (app shell) is now the first unblocked item:
+  its only dependency, FF-P03-01, is no longer not_started, and D-NEW-001 (frontend stack) is
+  decided (Option A, extend vanilla JS in place). Remaining gates on FF-P03-01 reaching
+  verified_complete are human-only (FB-10: create the real Cloudflare Access Application in the
+  dashboard) and do not block starting FF-P04-01's code. In parallel, FF-P07-01 (BMAD engine) is
+  also now unblocked by FF-P03-01 and has its decision made (D-NEW-004, Option A, local-Ollama-
+  routed) — still gated by FB-04 (no real engine exists) and ideally paired with fixing FB-02
+  (Gemini-as-reasoning-fallback) first. A third track, FB-09 (ContextBroker's three validation
+  bugs, newly discovered), has no decision dependency and can be fixed independently of both.

@@ -14,7 +14,7 @@ item_graph:
   FF-P01-01: { depends_on: [] }
   FF-P02-01: { depends_on: [] }
   FF-P02-02: { depends_on: [FF-P02-01], gated_by_blocker: [FB-05] }
-  FF-P03-01: { depends_on: [], gated_by_blocker: [FB-03], gated_by_decision: [D-NEW-002] }
+  FF-P03-01: { depends_on: [], gated_by_blocker: [FB-10], gated_by_decision: [], status: implemented_unverified }
   FF-P03-02: { depends_on: [FF-P02-01], gated_by_blocker: [FB-01], gated_by_decision: [D-NEW-003] }
   FF-P04-01: { depends_on: [FF-P03-01], gated_by_decision: [D-NEW-001, D-NEW-002] }
   FF-P05-01: { depends_on: [FF-P04-01] }
@@ -26,7 +26,7 @@ item_graph:
   FF-P10-01: { depends_on: [FF-P09-02, FF-P02-01], gated_by_blocker: [FB-06] }
   FF-P11-01: { depends_on: [FF-P02-01], gated_by_blocker: [FB-05] }
   FF-P12-01: { depends_on: [] }
-  FF-P12-02: { depends_on: [], gated_by_blocker: [FB-07] }
+  FF-P12-02: { depends_on: [], gated_by_blocker: [FB-09], status: implemented_unverified }
   FF-P13-01: { depends_on: [FF-P12-02] }
   FF-P13-02: { depends_on: [FF-P13-01, FF-P04-01] }
   FF-P14-01: { depends_on: [] }
@@ -95,7 +95,7 @@ phase_order:
 # --- decisions that must be made before certain items can leave not_started ---
 decision_gates:
   D-NEW-001: { gates: [FF-P04-01], status: open }
-  D-NEW-002: { gates: [FF-P03-01, FF-P04-01, FF-P07-01, FF-P09-01, FF-P09-02], status: open }
+  D-NEW-002: { gates: [FF-P03-01, FF-P04-01, FF-P07-01, FF-P09-01, FF-P09-02], status: decided, chosen_option: A }
   D-NEW-003: { gates: [FF-P03-02], status: open }
   D-NEW-004: { gates: [FF-P07-01], status: open }
 
@@ -103,11 +103,13 @@ decision_gates:
 blocker_gates:
   FB-01: { gates: [FF-P03-02], status: open }
   FB-02: { gates: [FF-P06-01], status: open }
-  FB-03: { gates: [FF-P03-01], status: open }
+  FB-03: { gates: [FF-P03-01], status: open, progress_note: "FF-P03-01 code shipped (commit 7c854a2); still open pending Access Application dashboard creation (FB-10), rate-limiting, and the two out-of-scope routes." }
+  FB-10: { gates: [FF-P03-01], status: open }
   FB-04: { gates: [FF-P07-01], status: open }
   FB-05: { gates: [FF-P02-02, FF-P11-01], status: open }
   FB-06: { gates: [FF-P10-01], status: open }
-  FB-07: { gates: [FF-P12-02], status: open }
+  FB-07: { gates: [FF-P12-02], status: resolved, closed_at: "2026-10-05" }
+  FB-09: { gates: [FF-P12-02, FF-P13-01], status: open }
   FB-08: { gates: [FF-P16-01, FF-P17-01], status: open }
 
 critical_path: >

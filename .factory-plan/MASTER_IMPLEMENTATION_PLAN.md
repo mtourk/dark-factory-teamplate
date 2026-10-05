@@ -98,22 +98,21 @@ taking the tunnel down is the natural first consequence of standing up real port
 
 ---
 
-## 4. Decisions that block everything else
+## 4. Decisions — all four now resolved (2026-10-05)
 
-Four decisions are open and recorded in `decisions.yml` with options and a recommendation each.
-**None have been decided — they require the user's input, not an agent's guess** (per the master
-plan's own completion discipline, a recommendation is not a decision record).
+All four decisions were open as of the Phase 00 audit; the user decided all four on 2026-10-05,
+all choosing Option A (recorded in full, with the user's exact wording, in `decisions.yml`):
 
-| ID | Decision | Recommendation | What it unblocks |
+| ID | Decision | Chosen | What it unblocked |
 |---|---|---|---|
-| `D-NEW-002` | Auth model for the portal | Cloudflare Access (perimeter) + D1 `users`/`user_profiles` (app state) | `FF-P03-01` → `FF-P04-01`, `FF-P07-01`, `FF-P09-01/02` |
-| `D-NEW-004` | Where BMAD reasoning runs | Local-Ollama-routed, paired with fixing the timeout fallback (not routing around it with Gemini) | `FF-P07-01` → `FF-P08-01`, `FF-P20-01` |
-| `D-NEW-001` | Frontend stack for `factory/intake/web` | Extend vanilla JS in place for now; revisit at Phase 09+ | `FF-P04-01` |
-| `D-NEW-003` | Where cloud-side secret values live | Cloudflare Workers Secrets, D1 holds only references | `FF-P03-02` |
+| `D-NEW-002` | Auth model for the portal | **A**: Cloudflare Access only, no custom auth code — user's explicit reason: "I need this to be simple." (Agent had recommended hybrid Option C; user chose simplicity instead — can revisit later if per-user state is needed.) | `FF-P03-01` (now implemented_unverified, commit `7c854a2`) → `FF-P04-01`, `FF-P07-01`, `FF-P09-01/02` |
+| `D-NEW-004` | Where BMAD reasoning runs | **A**: Local-Ollama-routed | `FF-P07-01` (still `not_started`/blocked on `FB-04` — decision alone doesn't build the engine) |
+| `D-NEW-001` | Frontend stack for `factory/intake/web` | **A**: Extend vanilla JS in place | `FF-P04-01` (now the next eligible item) |
+| `D-NEW-003` | Where cloud-side secret values live | **A**: Cloudflare Workers Secrets | `FF-P03-02` |
 
-**Recommended first action, once this plan is reviewed: get `D-NEW-002` and `D-NEW-004` decided.**
-They sit at the head of the two largest independent work tracks (see §6 below) and nothing of
-substance in Phases 03-09 or 06-08 can start without them.
+With all four decided, the gating that blocked Phases 03/04/07/09 on a human choice is gone.
+What's left on each is implementation work and the human-only dashboard/credential steps noted
+in `blockers.yml` (`FB-10`, `FB-08`, `FB-01`) — not further decisions.
 
 ---
 
@@ -127,8 +126,8 @@ lives in `phases/phase-NN-*.yml`; this is the overview.
 | 00 | Repository and deployment audit | `verified_complete` | — (this document) |
 | 01 | Configuration and installation portability | `not_started` | nothing — can start anytime |
 | 02 | D1 schema and migrations | `partially_implemented` | `FB-05` (apply unapplied migrations) |
-| 03 | Authentication, admin, profiles, secret settings | `partially_implemented` | `FB-03`, `D-NEW-002`, `D-NEW-003`, `FB-01` |
-| 04 | Responsive application shell | `not_started` | `FF-P03-01`, `D-NEW-001` |
+| 03 | Authentication, admin, profiles, secret settings | `partially_implemented` | `FF-P03-01` code shipped & tested (commit `7c854a2`); `FB-10` (Access Application dashboard step, human), `FB-01` (token rotation, human) |
+| 04 | Responsive application shell | `not_started` — now the next eligible item | nothing (dependency `FF-P03-01` and decision `D-NEW-001` both resolved) |
 | 05 | Idea drafts and text intake | `partially_implemented` | `FF-P04-01` |
 | 06 | Gemini voice integration | `blocked` | `FB-02` (must be fixed, not just noted) |
 | 07 | BMAD conversation service | `not_started` | `FB-04`, `D-NEW-004`, `FF-P03-01` |
@@ -136,7 +135,7 @@ lives in `phases/phase-NN-*.yml`; this is the overview.
 | 09 | Repository selection and creation | `partially_implemented` | `FF-P03-02` |
 | 10 | Cloudflare project/resource provisioning | `not_started` | `FB-06`, `FF-P09-02` |
 | 11 | Cloud-local queue and connectivity | `not_started` | `FB-05` |
-| 12 | FactoryFlow and local gateway integration | `partially_implemented` | `FB-07` (fix, not just note) |
+| 12 | FactoryFlow and local gateway integration | `partially_implemented` | `FB-07` resolved (commit `a6d24e8d`, 2026-10-05); `FB-09` (newly found: `ContextBroker` itself has 3 bugs, fix in progress) |
 | 13 | Critics, decision agent, and decision page | `partially_implemented` | `FF-P12-02`, `FF-P04-01` |
 | 14 | Sealed QA, verification, repair, reviewer | `partially_implemented` | wiring independent review into orchestrator |
 | 15 | GitHub PR, preview, auto-merge | `partially_implemented` | `sha=` fix (§3 above), `FF-P14-03` |
@@ -195,21 +194,36 @@ explicitly so it can't be misread later.
 
 ---
 
-## 8. Immediate next steps
+## 8. Status as of 2026-10-05 (post-decisions) and immediate next steps
 
-1. **User decision needed:** resolve `D-NEW-002` (auth model) and `D-NEW-004` (BMAD engine
-   location) — these are the two highest-leverage open questions; see `decisions.yml` for full
-   options and recommendations.
-2. **User action needed (not agent-executable):** rotate the leaked Cloudflare API token
-   (`FB-01`) — independent of any code change, should happen regardless of when Phase 03 starts.
-3. **Once `D-NEW-002` lands:** begin `FF-P03-01` (authentication), the single highest-leverage
-   unblocked item per `backlog.yml`.
-4. **In parallel, no decision needed:** start Track B (fix `FB-07` in `builder.py`), since it has
-   no open decision gating it and directly removes an active rule violation.
-5. **Also in parallel, no decision needed:** apply the pending D1 migrations (`FB-05`), unblocking
-   `FF-P02-02` and `FF-P11-01`.
+All four original decisions are made; the three originally-parallel tracks the user asked for are
+done and independently re-verified (not just agent-reported):
 
-This plan, and the YAML artifacts it summarizes, are now the standing source of truth for the
+- **FF-P03-01 (auth)** — `implemented_unverified`, commit `7c854a2`, 11/11 tests passing.
+- **FB-07 (context isolation in builder.py)** — `resolved`, commit `a6d24e8d`, 5/5 new tests
+  passing, no regressions in the 29-test builder suite.
+- **FB-05 (D1 migrations)** — `resolved`, `schema_phase18.sql` applied to production D1.
+
+Two new items surfaced while finishing that work (neither existed at Phase 00 audit time):
+
+- **`FB-09`** — `ContextBroker.assemble_role_context()` has 3 pre-existing validation bugs and
+  raises for every role. Not a decision; a fix is in progress (dispatched 2026-10-05).
+- **`FB-10`** — the real Cloudflare Access Application still needs creating in the Cloudflare
+  dashboard before `FF-P03-01` is actually live in production (human-only step, like `FB-01`'s
+  token rotation and `FB-08`'s deploy gating).
+
+**Next steps:**
+1. **No decision needed, in progress:** fix `FB-09` (`ContextBroker`'s three bugs) — agent
+   dispatched, not yet complete.
+2. **No decision needed, next eligible item per `backlog.yml`:** `FF-P04-01`, the application
+   shell (D-NEW-001 extend-vanilla-JS approach), now unblocked since `FF-P03-01` has shipped.
+3. **No decision needed, parallelizable:** `FF-P07-01` (BMAD engine, D-NEW-004 local-Ollama-
+   routed) is also now unblocked by `FF-P03-01`, but still gated by `FB-04` (no real engine code
+   exists yet) — this is a build task, not a decision wait.
+4. **Human action, not agent-executable, no urgency tied to a phase:** rotate the leaked
+   Cloudflare token (`FB-01`); create the Cloudflare Access Application (`FB-10`).
+
+This plan, and the YAML artifacts it summarizes, are the standing source of truth for the
 project. Per the execution prompt's resume protocol, any future session should read
 `implementation-status.yml` and `backlog.yml` first, confirm `next_eligible_item` is still
 accurate, and continue from there rather than re-auditing from scratch.

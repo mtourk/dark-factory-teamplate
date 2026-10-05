@@ -128,3 +128,44 @@ here for provenance since it is the only pre-existing hard test evidence in the 
 - Agents ac1025b8440b60502 and ad80f45ce4e00a980 are running in background
 - FB-05 is fully resolved (migration applied to production D1)
 - Once agents complete, all three tracks will have concrete working code + tests + commits
+
+---
+
+## 2026-10-05 — Both parallel agents completed, independently re-verified, new blocker found
+
+**Track 1 (FB-07) completed:** Agent ac1025b8440b60502 committed `a6d24e8d`
+("fix(context-isolation): remove raw_conversation from builder, use ContextBroker per §11 and
+critical mistake #10"). Independently re-ran `python -m pytest factory/tests/test_context_isolation_builder.py -v`
+myself (not trusting the agent's own report alone): 5/5 passed. Also independently confirmed
+`git diff 5947b8e..HEAD -- factory/context/broker.py` is empty — the agent did not touch the file
+it was told was read-only, confirming its claim. `FB-07` marked `resolved` in `blockers.yml`.
+
+**Track 2 (FF-P03-01) completed:** Agent ad80f45ce4e00a980 committed `7c854a2`
+("feat(auth): add Cloudflare Access JWT verification to Worker routes per FF-P03-01
+(D-NEW-002 Option A)"). Independently re-ran `python -m pytest factory/tests/test_intake_worker_auth.py -v`:
+11/11 passed. `FF-P03-01` moved from `not_started` to `implemented_unverified` in
+`implementation-status.yml`/`backlog.yml`. Not `verified_complete` yet: the real Cloudflare
+Access Application still needs to be created in the dashboard and the placeholder AUD swapped
+in — a human-only step, filed as a new blocker `FB-10`.
+
+**New finding, not previously known, surfaced by the FB-07 agent and independently confirmed by
+me:** `FB-09` — `ContextBroker.assemble_role_context()` in `factory/context/broker.py` raises
+`ContextPolicyViolation` for every role due to three pre-existing bugs (manifest_id regex
+mismatch, `source_phase` validation, hash-computed-after-first-validation ordering). Confirmed
+pre-existing via the agent's git-stash A/B test against `test_phase5_leakage.py`'s already-failing
+suite — not caused by the FB-07 fix. The FB-07 agent offered to fix this itself but was correctly
+left waiting rather than self-approved (its task scope marked `broker.py` read-only; a subagent's
+offer to expand its own scope is not something it can grant itself). Decided to dispatch a fresh,
+narrowly-scoped agent for this fix since it is a plain bug fix with no open architecture question
+attached (unlike D-NEW-002/004, which genuinely needed the user's input) — recorded here for
+transparency, not left silent.
+
+**Artifacts updated this entry:** `implementation-status.yml` (FF-P03-01, FF-P12-02),
+`blockers.yml` (FB-07→resolved, FB-09 added, FB-10 added), `backlog.yml` (next_eligible_item now
+`FF-P04-01`), `dependency-graph.yml` (FB-07/FB-10/FB-09 edges, D-NEW-002 decided), `verification-index.yml`
+(FF-P03-01, FF-P12-02 entries added), `phases/phase-03-auth-admin-secrets.yml`,
+`phases/phase-12-factoryflow-gateway.yml`.
+
+**Status:** both of the user's two parallel code tracks are done and independently verified; FB-05
+(third track) was already resolved. Dispatching an agent now to fix `FB-09` in `factory/context/broker.py`
+before moving to the next backlog item.

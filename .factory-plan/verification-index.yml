@@ -43,6 +43,35 @@ verification_entries:
     result: passed
     test_count: 11
 
+  - item_id: FF-P03-01
+    verification_commands:
+      - "python -m pytest factory/tests/test_intake_worker_auth.py -v"
+    verification_evidence: >
+      11 tests, all passing (independently re-run 2026-10-05, not just agent-reported). Drives the
+      real bundled TypeScript Worker (esbuild + a Node driver, factory/tests/helpers/worker_auth_driver.mjs)
+      with a throwaway-signed JWT against a mocked Access JWKS endpoint — not a Python mirror of
+      the logic. Covers missing/malformed/wrong-audience/expired/unknown-kid rejection, valid-JWT
+      acceptance, public-route exemption, and fail-closed-on-missing-config.
+    last_verified_at: "2026-10-05"
+    result: passed
+    test_count: 11
+
+  - item_id: FF-P12-02
+    verification_commands:
+      - "python -m pytest factory/tests/test_context_isolation_builder.py -v"
+    verification_evidence: >
+      5 tests, all passing (independently re-run 2026-10-05). Confirms BuilderInput.raw_conversation
+      is gone and the builder prompt never contains literal discovery-conversation text (sentinel
+      string ZEBRA-NEBULA-7729... used as proof). factory/tests/test_phase10_implementation.py
+      (29 tests) re-confirmed passing alongside it, no regressions. NOTE: this verifies the
+      isolation guarantee (no leakage), not that the broker successfully passes real context
+      through — that half is blocked by FB-09 (broker.py has 3 bugs making
+      assemble_role_context() raise for every role; confirmed pre-existing via git-stash A/B
+      against test_phase5_leakage.py's already-failing suite).
+    last_verified_at: "2026-10-05"
+    result: passed
+    test_count: 5
+
   - item_id: FF-P19-01
     verification_commands:
       - "python -m pytest factory/tests/test_cli_run.py -v"
