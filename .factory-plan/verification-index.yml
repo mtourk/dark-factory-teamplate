@@ -65,12 +65,26 @@ verification_entries:
       string ZEBRA-NEBULA-7729... used as proof). factory/tests/test_phase10_implementation.py
       (29 tests) re-confirmed passing alongside it, no regressions. NOTE: this verifies the
       isolation guarantee (no leakage), not that the broker successfully passes real context
-      through — that half is blocked by FB-09 (broker.py has 3 bugs making
-      assemble_role_context() raise for every role; confirmed pre-existing via git-stash A/B
-      against test_phase5_leakage.py's already-failing suite).
+      through — that half was blocked by FB-09, now also resolved (see below).
     last_verified_at: "2026-10-05"
     result: passed
     test_count: 5
+
+  - item_id: FF-P12-02-FB-09
+    verification_commands:
+      - "python -m pytest factory/tests/test_context_broker.py -v"
+    verification_evidence: >
+      15 tests, all passing (independently re-run 2026-10-05, not just agent-reported).
+      Parametrized over every FactoryRole value, proves ContextBroker.assemble_role_context()
+      returns a real ContextPackage (manifest_id pattern-matching, source_phase>=1, valid
+      64-char-hex manifest_hash) instead of always raising ContextPolicyViolation. Plus a
+      store/load round-trip test. Independently confirmed via git diff that only broker.py
+      changed (models.py untouched) and that test_phase5_leakage.py's 19 pre-existing failures
+      are byte-for-byte unchanged before/after (git-stash A/B) — this fix caused no regressions.
+      NOTE: those 19 failures have a separate, newly-filed cause — see blockers.yml:FB-11.
+    last_verified_at: "2026-10-05"
+    result: passed
+    test_count: 15
 
   - item_id: FF-P19-01
     verification_commands:

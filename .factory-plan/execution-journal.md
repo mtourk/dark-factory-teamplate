@@ -169,3 +169,42 @@ transparency, not left silent.
 **Status:** both of the user's two parallel code tracks are done and independently verified; FB-05
 (third track) was already resolved. Dispatching an agent now to fix `FB-09` in `factory/context/broker.py`
 before moving to the next backlog item.
+
+---
+
+## 2026-10-05 — FB-09 fixed and independently verified; one more test-fixture bug found (FB-11)
+
+Agent a303ddadc7648bcbe committed `1dd7c6dd` ("fix(context-broker): resolve FB-09 — manifest_id
+pattern, source_phase, and hash-before-validate ordering bugs in assemble_role_context()").
+Independently re-ran its claims rather than trusting the report:
+
+- `python -m pytest factory/tests/test_context_broker.py -v` → **15/15 passed** (new file,
+  parametrized over every `FactoryRole`, proves `assemble_role_context()` now actually returns a
+  `ContextPackage` instead of always raising).
+- `python -m pytest factory/tests/test_context_isolation_builder.py factory/tests/test_phase10_implementation.py -v`
+  → **34/34 passed**, confirming no regression in the FB-07 fix or the broader builder suite.
+- `git diff` on the fix commit: confirmed only `factory/context/broker.py` changed (plus the new
+  test file) — `models.py` untouched, matching the agent's claim that the schemas were correct
+  and the bug was entirely in the broker's usage of them.
+- `python -m pytest factory/tests/test_phase5_leakage.py -v` → 19 failed / 3 passed — **identical
+  to the pre-fix baseline**, confirming this fix caused no regression there. The agent additionally
+  flagged (and I independently re-confirmed by grep) that `blockers.yml`'s original "12
+  pre-existing failures" estimate for this file was stale/wrong (actual: 19), and — more
+  importantly — that these 19 failures are a *different* bug from FB-09: every
+  `ContextBroker(...)` construction in that file uses a `run_id` of the wrong length (e.g.
+  `RUN-seal001`, `RUN-mut001`, `RUN-a001`), none matching `ContextManifest.run_id`'s required
+  `^RUN-[a-z0-9]{8}$` pattern — confirmed by direct grep against the file. Filed as new blocker
+  **`FB-11`** (severity medium, category test-bug): the broker itself is now proven correct
+  (FB-09's own 15-test suite proves it), but this specific test file — meant to prove role/run/
+  project isolation guarantees — can't currently demonstrate that because of its own fixture bug.
+
+**Artifacts updated:** `blockers.yml` (FB-09 → resolved, FB-11 added), `implementation-status.yml`
+(FF-P12-02 evidence/missing_work/blocker_id cleared), `dependency-graph.yml`,
+`verification-index.yml`, `phases/phase-12-factoryflow-gateway.yml`.
+
+**Status:** every item from the user's original three-parallel-track instruction, plus both
+findings surfaced along the way, is now resolved or correctly scoped as a separate open item
+(`FB-11`, low-urgency, blocks nothing). `backlog.yml`'s `next_eligible_item` (`FF-P04-01`, the
+application shell) stands as the next thing to build; `FB-11` and the two human-only steps
+(`FB-01` token rotation, `FB-10` Access Application creation) remain open with no code-blocking
+effect on `FF-P04-01`.

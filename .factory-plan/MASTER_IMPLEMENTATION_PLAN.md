@@ -135,7 +135,7 @@ lives in `phases/phase-NN-*.yml`; this is the overview.
 | 09 | Repository selection and creation | `partially_implemented` | `FF-P03-02` |
 | 10 | Cloudflare project/resource provisioning | `not_started` | `FB-06`, `FF-P09-02` |
 | 11 | Cloud-local queue and connectivity | `not_started` | `FB-05` |
-| 12 | FactoryFlow and local gateway integration | `partially_implemented` | `FB-07` resolved (commit `a6d24e8d`, 2026-10-05); `FB-09` (newly found: `ContextBroker` itself has 3 bugs, fix in progress) |
+| 12 | FactoryFlow and local gateway integration | `partially_implemented` | `FB-07` resolved (commit `a6d24e8d`); `FB-09` resolved (commit `1dd7c6dd`) — `ContextBroker` now proven correct for every role, 15 passing tests. `FB-11` open (unrelated test-fixture bug, blocks nothing) |
 | 13 | Critics, decision agent, and decision page | `partially_implemented` | `FF-P12-02`, `FF-P04-01` |
 | 14 | Sealed QA, verification, repair, reviewer | `partially_implemented` | wiring independent review into orchestrator |
 | 15 | GitHub PR, preview, auto-merge | `partially_implemented` | `sha=` fix (§3 above), `FF-P14-03` |
@@ -204,22 +204,29 @@ done and independently re-verified (not just agent-reported):
   passing, no regressions in the 29-test builder suite.
 - **FB-05 (D1 migrations)** — `resolved`, `schema_phase18.sql` applied to production D1.
 
-Two new items surfaced while finishing that work (neither existed at Phase 00 audit time):
+Three new items surfaced while finishing that work (none existed at Phase 00 audit time), two
+already resolved:
 
-- **`FB-09`** — `ContextBroker.assemble_role_context()` has 3 pre-existing validation bugs and
-  raises for every role. Not a decision; a fix is in progress (dispatched 2026-10-05).
-- **`FB-10`** — the real Cloudflare Access Application still needs creating in the Cloudflare
-  dashboard before `FF-P03-01` is actually live in production (human-only step, like `FB-01`'s
-  token rotation and `FB-08`'s deploy gating).
+- **`FB-09`** (resolved, commit `1dd7c6dd`) — `ContextBroker.assemble_role_context()` had 3
+  pre-existing validation bugs and raised for every role. Fixed in `broker.py` only; 15 new
+  passing tests prove it now works for every `FactoryRole`; 34 existing tests re-confirmed with
+  no regressions.
+- **`FB-11`** (open, low urgency, blocks nothing) — found while verifying FB-09:
+  `test_phase5_leakage.py`'s own `run_id` test fixtures violate the required pattern, so 19 of its
+  22 tests fail for a reason unrelated to (and unfixed by) FB-09. The broker itself is proven
+  correct; this one test file's isolation assertions just can't run yet.
+- **`FB-10`** (open) — the real Cloudflare Access Application still needs creating in the
+  Cloudflare dashboard before `FF-P03-01` is actually live in production (human-only step, like
+  `FB-01`'s token rotation and `FB-08`'s deploy gating).
 
 **Next steps:**
-1. **No decision needed, in progress:** fix `FB-09` (`ContextBroker`'s three bugs) — agent
-   dispatched, not yet complete.
-2. **No decision needed, next eligible item per `backlog.yml`:** `FF-P04-01`, the application
+1. **No decision needed, next eligible item per `backlog.yml`:** `FF-P04-01`, the application
    shell (D-NEW-001 extend-vanilla-JS approach), now unblocked since `FF-P03-01` has shipped.
-3. **No decision needed, parallelizable:** `FF-P07-01` (BMAD engine, D-NEW-004 local-Ollama-
+2. **No decision needed, parallelizable:** `FF-P07-01` (BMAD engine, D-NEW-004 local-Ollama-
    routed) is also now unblocked by `FF-P03-01`, but still gated by `FB-04` (no real engine code
    exists yet) — this is a build task, not a decision wait.
+3. **No decision needed, low priority:** fix `FB-11`'s fixture bug so `test_phase5_leakage.py` can
+   actually prove its isolation assertions.
 4. **Human action, not agent-executable, no urgency tied to a phase:** rotate the leaked
    Cloudflare token (`FB-01`); create the Cloudflare Access Application (`FB-10`).
 

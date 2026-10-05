@@ -29,6 +29,6 @@ items:
     full_evidence: "see implementation-status.yml:FF-P12-01"
   - id: FF-P12-02
     status: implemented_unverified
-    blocker_id: FB-09
+    blocker_id: null
     decision_id: null
-    full_evidence: "see implementation-status.yml:FF-P12-02 (FB-07 resolved 2026-10-05; FB-09 newly discovered, still open)"
+    full_evidence: "see implementation-status.yml:FF-P12-02 (FB-07 resolved 2026-10-05, commit a6d24e8d; FB-09 resolved 2026-10-05, commit 1dd7c6dd. FB-11 open — unrelated test-fixture bug in test_phase5_leakage.py, doesn't block this item)"

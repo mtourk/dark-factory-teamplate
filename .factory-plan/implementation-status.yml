@@ -541,21 +541,23 @@ items:
     - "factory/context/broker.py implements real manifest/hash/exclusion/fail-closed logic: ContextBroker.assemble_role_context() (196-264) builds a manifest with sha256-hashed source_artifacts (_compute_source_artifacts, 266-289), per-role exclusions (_compute_exclusions, 291-311), and load-time re-verification raising ContextPolicyViolation on tamper (load_package, 341-393)."
     - "RESOLVED 2026-10-05 (FB-07, commit a6d24e8): factory/implementation/builder.py no longer has a raw_conversation field; BuilderInput.project_id replaces it. _build_user_prompt() now calls ContextBroker.assemble_role_context(FactoryRole.BUILDER) and renders only shared_artifacts['compiled_intent']/['approved_plan'], wrapped in try/except ContextPolicyViolation (fail-closed: on broker failure the builder gets no context block at all, never raw conversation text)."
     - "5 new tests in factory/tests/test_context_isolation_builder.py, independently re-run 2026-10-05: 5/5 passing, including a sentinel-string test proving the literal discovery-conversation text never reaches the prompt. factory/tests/test_phase10_implementation.py (29 tests) re-confirmed passing — no regressions."
+    - "RESOLVED 2026-10-05 (FB-09, commit 1dd7c6dd): ContextBroker.assemble_role_context() no longer raises for every role — fixed manifest_id pattern, source_phase>=1, and validate-before-hash ordering, all in broker.py only (models.py untouched; its schemas were correct). The builder's call now actually succeeds and will receive real compiled_intent/approved_plan content for any correctly-formatted run_id."
+    - "New factory/tests/test_context_broker.py (15 tests), independently re-run 2026-10-05: 15/15 passing — parametrized over every FactoryRole, proves assemble_role_context() returns a real ContextPackage, plus a store/load round-trip test."
   missing_work:
     - "FACTORY_ROOT is hardcoded to C:/Factory (broker.py:44) from the old plan's layout, not driven by new installation config (links to FF-P01)."
     - "assemble_certified_knowledge() (161-177) returns an empty skeleton — no real knowledge loading."
-    - "NEW FINDING (FB-09, discovered incidentally while verifying the FB-07 fix): ContextBroker.assemble_role_context() itself currently raises ContextPolicyViolation for every role, for every caller — pre-existing (confirmed via git-stash A/B against test_phase5_leakage.py's 12 already-failing tests), not caused by the FB-07 fix. The isolation violation (raw text leaking) is fixed, but the broker still cannot pass real compiled_intent/approved_plan through to the builder's prompt — it fails closed to nothing. See blockers.yml:FB-09 for the three exact bugs."
-    - "critics.py/bmad.py/independent.py still never call ContextBroker (only builder.py now does, and only gets a successful call once FB-09 is fixed)."
+    - "critics.py/bmad.py/independent.py still never call ContextBroker (only builder.py does so far)."
+    - "NEW FINDING (FB-11, discovered while verifying the FB-09 fix, independently re-confirmed): test_phase5_leakage.py — the file meant to prove role/run/project isolation guarantees — has its own fixture bug (every run_id used violates ContextManifest's required 8-char pattern) and so 19/22 of its tests fail for a reason unrelated to and unfixed by FB-09. The broker itself is proven correct (FB-09's 15-test suite); this specific test file's isolation assertions have no current passing proof."
   acceptance_criteria:
-    - "Every role (builder/reviewer/critic/decision agent) receives its context exclusively through a ContextBroker-issued, hash-verified package; no raw conversation or sealed-test content crosses role boundaries. [Isolation half MET: no leakage occurs; the pass-through half is blocked by FB-09.]"
+    - "Every role (builder/reviewer/critic/decision agent) receives its context exclusively through a ContextBroker-issued, hash-verified package; no raw conversation or sealed-test content crosses role boundaries. [Isolation MET for the builder path (no leakage, and the pass-through now works, both independently verified). Not yet wired for critics/reviewer — see FF-P13-01/FF-P14-03.]"
   verification_commands:
-    - "python -m pytest factory/tests/test_context_isolation_builder.py -v"
+    - "python -m pytest factory/tests/test_context_isolation_builder.py factory/tests/test_context_broker.py -v"
   verification_evidence:
-    - "5/5 passing (2026-10-05), independently re-run outside the implementing agent's own report. factory/tests/test_phase10_implementation.py 29/29 passing, no regressions."
+    - "5/5 (isolation) + 15/15 (broker correctness) passing (2026-10-05), independently re-run outside either implementing agent's own report. factory/tests/test_phase10_implementation.py 29/29 (34/34 combined with the isolation suite) passing, no regressions."
   last_updated_at: "2026-10-05"
   last_updated_by: "claude:2026-10-05"
-  next_action: "Fix FB-09's three bugs in broker.py (manifest_id pattern, source_phase>=1, validate-before-hash ordering) so assemble_role_context() actually succeeds; then wire critics.py/independent.py to call it too."
-  blocker_id: FB-09
+  next_action: "Wire critics.py/independent.py to call ContextBroker too (FF-P13-01/FF-P14-03), now that the broker itself is confirmed working. Separately, fix FB-11's fixture bug so test_phase5_leakage.py's own isolation assertions can actually run."
+  blocker_id: null
 
 # ============================================================================
 # PHASE 13 — Critics, decision agent, and decision page
