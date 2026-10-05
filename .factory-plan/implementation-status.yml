@@ -93,27 +93,35 @@ items:
 
 - id: FF-P01-01
   phase: config-portability
-  title: Externalize hardcoded installation values (GitHub org, D1 database_id, Worker name, CORS origins) into config/defaults.json + config/schema.json
+  title: Externalize hardcoded installation values (GitHub org, D1 database_id, Worker name, CORS origins) into config/defaults.json + config/schema.json; eliminate hardcoded machine-specific OS paths
   status: not_started
-  priority: high
+  priority: critical
   dependencies: []
   repository_paths:
     - factory/intake/worker/wrangler.toml
     - factory/intake/worker/src/index.ts
+    - factory/context/broker.py
+    - factory/state.py
+    - factory/implementation/workspace.py
+    - factory/sealed_qa/acceptance.py
+    - factory/tools/worktrees.py
   existing_evidence:
     - "factory/intake/worker/wrangler.toml hardcodes GITHUB_ORG=\"mtourk\", database_id=\"ffdfcde8-d68d-48b6-9436-2b12b5245968\", Worker name \"dark-factory-intake\"."
     - "factory/intake/worker/src/index.ts:49 hardcodes ALLOWED_ORIGINS CORS allow-list."
+    - "RE-PRIORITIZED 2026-10-05: user is standing up a cross-machine workflow (macOS/Cursor for development, this Windows laptop for local-Ollama testing/deploy). Grepped the Python codebase directly and confirmed factory/context/broker.py, factory/state.py, factory/implementation/workspace.py, factory/sealed_qa/acceptance.py, and factory/tools/worktrees.py all contain hardcoded 'C:\\Factory'-style paths. This is a second, distinct portability gap from the config-externalization one above (OS/machine path portability vs. installation/tenant config portability) but belongs in the same phase per master plan §16 Phase 01's 'dynamic installation configuration' deliverable, and is now the higher-priority half of this item: any backlog item implemented on a non-Windows machine that touches these files will silently bake in Windows-only path assumptions it cannot even test."
   missing_work:
     - "No config/defaults.json or config/schema.json exists anywhere in the repo."
     - "No per-installation setup record / JSON-schema validation layer exists."
     - "No configuration UI exists (no Repository Settings page at all, see FF-P09)."
+    - "Hardcoded 'C:\\Factory' literals in broker.py/state.py/workspace.py/acceptance.py/worktrees.py need replacing with a profile-driven root path resolved via pathlib.Path (already partially modeled in factory/profiles.py's multi-profile support — this item should extend that pattern to storage/workspace roots rather than inventing a new mechanism)."
   acceptance_criteria:
     - "A fresh clone with a different GitHub org/Cloudflare account/domain can be configured without editing source files."
+    - "No literal Windows-style absolute path (e.g. 'C:\\...') remains in factory/*.py outside of test fixtures and documentation; storage/workspace roots are resolved via pathlib.Path from a profile-supplied setting, so the same code runs unmodified on macOS/Linux for non-Ollama-dependent work."
   verification_commands: []
   verification_evidence: []
   last_updated_at: "2026-10-05"
   last_updated_by: "claude:2026-10-05"
-  next_action: "Design config/schema.json covering org, D1 ids, CORS origins, zone/domain, Worker names; migrate wrangler.toml [vars] to read from it where wrangler supports it, else document the remaining irreducible wrangler.toml fields."
+  next_action: "Design config/schema.json covering org, D1 ids, CORS origins, zone/domain, Worker names; migrate wrangler.toml [vars] to read from it where wrangler supports it, else document the remaining irreducible wrangler.toml fields. In parallel, replace the hardcoded 'C:\\Factory' literals with a pathlib-based, profile-driven root (see factory/profiles.py)."
   blocker_id: null
 
 # ============================================================================

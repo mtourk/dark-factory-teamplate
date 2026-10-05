@@ -231,3 +231,58 @@ test_phase5_leakage.py per FB-11"). Independently re-ran its claims:
 
 **Status:** FB-11 resolved independently verified. Parallel agent a39221d315a95ce5b for FF-P04-01
 (responsive app shell) also launched simultaneously; awaiting its completion report.
+
+---
+
+## 2026-10-05 — FF-P04-01 completed and verified; cross-machine dev workflow set up
+
+**FF-P04-01 (responsive app shell) completed:** Agent a39221d315a95ce5b committed `c4cee1f`
+("feat(app-shell): implement responsive nav, routing, state management per FF-P04-01 (D-NEW-001
+extend vanilla JS)"). Independently re-verified: `git show --stat` matches the claimed 11
+files/1456 insertions; `python -m pytest factory/tests/test_intake_web_shell.py -v` → 85/85
+passed; full `factory/tests/` suite → 377 passed (292 pre-existing + 85 new, no new failures);
+spot-checked the agent's claimed `Router.resolve()` reentrancy bug fix directly in
+`factory/intake/web/app.js` — real, present, correctly described. `backlog.yml`'s
+`next_eligible_item` advanced to `FF-P05-01` by the agent's own commit.
+
+**User then asked a strategic question:** can development happen from a second machine (macOS,
+via Cursor, for access to stronger/newer LLMs) while verification/testing/deploy stays on this
+Windows laptop (local Ollama, `wrangler`)? Investigated directly rather than answering from
+assumption:
+- Confirmed no `sys.platform`/OS-conditional code in `factory/` itself (the project's own code is
+  not OS-branching), but found two concrete portability problems: (1) `factory/intake/worker/
+  node_modules/` and `.wrangler/` were committed to git — 3,132 files tracked, including
+  Windows-only native binaries (`@esbuild/win32-x64`, `@cloudflare/workerd-windows-64`,
+  `sharp-win32-x64`) that would break a macOS checkout; (2) `factory/context/broker.py`,
+  `factory/state.py`, `factory/implementation/workspace.py`, `factory/sealed_qa/acceptance.py`,
+  and `factory/tools/worktrees.py` all hardcode `C:\Factory`-style paths.
+- Concluded the workflow is sound in principle — the project's existing 5-state status taxonomy
+  (specifically `implemented_unverified`) already models exactly "coded but not locally verified,"
+  which is what dev-machine output should be capped at — and recommended three concrete actions.
+
+**User approved all three, in parallel, plus asked for an explicit pre-commit status-update
+protocol so nothing is dropped between machines. Done directly (no subagents needed — mechanical/
+well-scoped enough to do inline with the same independent-verification discipline):**
+
+1. **Fixed node_modules/.wrangler tracking:** `git rm -r --cached` on both directories (3,137
+   files untracked, left on disk); added `node_modules/` and `.wrangler/` to `.gitignore` with an
+   explanatory comment.
+2. **Re-prioritized `FF-P01-01`** `high`→`critical` in `backlog.yml`, `implementation-status.yml`,
+   and `phases/phase-01-config-portability.yml`; expanded its scope/evidence/acceptance-criteria to
+   explicitly cover the hardcoded `C:\Factory` paths (previously it only covered Cloudflare-config
+   externalization); promoted it to `next_eligible_item` ahead of `FF-P05-01`, with rationale tied
+   directly to this new workflow (fixing path portability first reduces risk for whatever
+   Mac-authored work follows).
+3. **Wrote `docs/operations/CROSS_MACHINE_DEV_WORKFLOW.md`**: the full protocol, the exact prompt
+   to paste into a dev-machine agent at session start, hard constraints (never mark
+   `verified_complete`, never fake Ollama-dependent testing, don't introduce new hardcoded paths,
+   never commit `node_modules`/`.wrangler`), a mandatory pre-commit checklist (status fields to
+   update, what to state was/wasn't verified, commit-message requirement), the Windows-side resume
+   protocol, a known-gaps section, and a quick-reference table of which machine does what.
+4. Added a new §9 to `MASTER_IMPLEMENTATION_PLAN.md` pointing to that doc and summarizing the two
+   concrete fixes.
+
+**Status:** both parallel-requested fixes (node_modules/.wrangler untracking, FF-P01-01
+re-prioritization) and the handoff doc are complete; `.factory-plan/` artifacts updated to match.
+Next: commit this batch, then report the exact "how to invoke the next session on the Mac"
+instructions back to the user.

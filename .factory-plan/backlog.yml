@@ -62,10 +62,19 @@ queue:
     blocker_id: FB-05
   - id: FF-P01-01
     phase: config-portability
-    priority: high
+    priority: critical
     status: not_started
     dependencies: []
     blocker_id: null
+    note: >
+      RE-PRIORITIZED 2026-10-05 (high -> critical): user is standing up a cross-machine dev
+      workflow (macOS/Cursor for development, this Windows laptop for local-Ollama test/deploy).
+      Confirmed by direct grep that factory/context/broker.py, factory/state.py,
+      factory/implementation/workspace.py, factory/sealed_qa/acceptance.py, and
+      factory/tools/worktrees.py all hardcode 'C:\Factory'-style paths — see
+      implementation-status.yml:FF-P01-01. Elevated ahead of FF-P05-01 so storage/workspace
+      path portability is fixed before more Mac-authored code lands on top of it. See
+      docs/operations/CROSS_MACHINE_DEV_WORKFLOW.md.
   - id: FF-P04-01
     phase: app-shell
     priority: high
@@ -197,9 +206,23 @@ queue:
       - FF-P17-01
     blocker_id: null
 
-next_eligible_item: FF-P05-01
+next_eligible_item: FF-P01-01
 next_eligible_item_rationale: >
-  UPDATED 2026-10-05: FF-P04-01 (app shell) is now implemented (85/85 tests passing in
+  UPDATED 2026-10-05 (second update this day): FF-P04-01 (app shell) is implemented (85/85 tests
+  passing), making FF-P05-01 (New Idea page) dependency-unblocked and the prior pick — see history
+  below. Re-picked FF-P01-01 ahead of it, same day, because the user is now standing up a
+  cross-machine dev workflow (macOS/Cursor for development, this Windows laptop for local-Ollama
+  test/deploy) and FF-P01-01 was just re-prioritized high->critical after confirming (direct grep)
+  that factory/context/broker.py, factory/state.py, factory/implementation/workspace.py,
+  factory/sealed_qa/acceptance.py, and factory/tools/worktrees.py hardcode 'C:\Factory'-style
+  paths. Per the master plan's own priority-first selection rule (§0 step 6), a critical-priority
+  unblocked item (FF-P01-01, dependencies: []) now outranks a high-priority one (FF-P05-01).
+  Fixing this first reduces the risk that Mac-authored work (which cannot test on Windows/Ollama)
+  silently depends on path assumptions it never saw break. FF-P05-01 remains the next item after
+  FF-P01-01 lands. See docs/operations/CROSS_MACHINE_DEV_WORKFLOW.md for the full workflow this
+  decision supports.
+previous_next_eligible_item_rationale: >
+  2026-10-05 (first update): FF-P04-01 (app shell) is now implemented (85/85 tests passing in
   factory/tests/test_intake_web_shell.py, plus the underlying 41/41 Node-driver checks),
   built per D-NEW-001 Option A by extending factory/intake/web/app.js in place with a
   hash-based Router, AppShellState, showPage()/createModal() focus management, and

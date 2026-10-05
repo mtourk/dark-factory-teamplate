@@ -21,6 +21,7 @@ deliverables:
   - "secret references"
   - "configuration UI"
 overall_status: not_started
+priority: critical  # raised from high, 2026-10-05, to support cross-machine dev workflow — see docs/operations/CROSS_MACHINE_DEV_WORKFLOW.md
 items:
   - id: FF-P01-01
     status: not_started

@@ -124,7 +124,7 @@ lives in `phases/phase-NN-*.yml`; this is the overview.
 | # | Phase | Overall status | Blocking on |
 |---|---|---|---|
 | 00 | Repository and deployment audit | `verified_complete` | — (this document) |
-| 01 | Configuration and installation portability | `not_started` | nothing — can start anytime |
+| 01 | Configuration and installation portability | `not_started` | nothing — can start anytime; **re-prioritized high→critical, 2026-10-05, now `next_eligible_item`** (hardcoded `C:\Factory` paths in `broker.py`/`state.py`/`workspace.py`/`acceptance.py`/`worktrees.py` block safe cross-machine dev — see §9) |
 | 02 | D1 schema and migrations | `partially_implemented` | `FB-05` (apply unapplied migrations) |
 | 03 | Authentication, admin, profiles, secret settings | `partially_implemented` | `FF-P03-01` code shipped & tested (commit `7c854a2`); `FB-10` (Access Application dashboard step, human), `FB-01` (token rotation, human) |
 | 04 | Responsive application shell | `not_started` — now the next eligible item | nothing (dependency `FF-P03-01` and decision `D-NEW-001` both resolved) |
@@ -219,14 +219,19 @@ already resolved:
   Cloudflare dashboard before `FF-P03-01` is actually live in production (human-only step, like
   `FB-01`'s token rotation and `FB-08`'s deploy gating).
 
-**Next steps:**
-1. **No decision needed, next eligible item per `backlog.yml`:** `FF-P04-01`, the application
-   shell (D-NEW-001 extend-vanilla-JS approach), now unblocked since `FF-P03-01` has shipped.
-2. **No decision needed, parallelizable:** `FF-P07-01` (BMAD engine, D-NEW-004 local-Ollama-
+**Since resolved, same day:** `FF-P04-01` (app shell) implemented, commit `c4cee1f`, 85/85 tests
+passing. `FB-11` resolved, commit `8b256d4`, fixture bug eliminated (14/22 tests now pass in
+`test_phase5_leakage.py`; the other 8 are pre-existing assertion issues, not fixture bugs).
+
+**Next steps (updated same day — see §9 for why `FF-P01-01` jumped the queue):**
+1. **No decision needed, now `next_eligible_item`, re-prioritized `high`→`critical`:**
+   `FF-P01-01` (config/installation portability) — specifically its hardcoded `C:\Factory`-path
+   half, found while evaluating the cross-machine workflow in §9. Dependencies: none.
+2. **No decision needed, queued right after:** `FF-P05-01` (New Idea page), unblocked now that
+   `FF-P04-01` has shipped.
+3. **No decision needed, parallelizable:** `FF-P07-01` (BMAD engine, D-NEW-004 local-Ollama-
    routed) is also now unblocked by `FF-P03-01`, but still gated by `FB-04` (no real engine code
    exists yet) — this is a build task, not a decision wait.
-3. **No decision needed, low priority:** fix `FB-11`'s fixture bug so `test_phase5_leakage.py` can
-   actually prove its isolation assertions.
 4. **Human action, not agent-executable, no urgency tied to a phase:** rotate the leaked
    Cloudflare token (`FB-01`); create the Cloudflare Access Application (`FB-10`).
 
@@ -234,3 +239,33 @@ This plan, and the YAML artifacts it summarizes, are the standing source of trut
 project. Per the execution prompt's resume protocol, any future session should read
 `implementation-status.yml` and `backlog.yml` first, confirm `next_eligible_item` is still
 accurate, and continue from there rather than re-auditing from scratch.
+
+---
+
+## 9. Cross-machine development workflow (added 2026-10-05)
+
+The user is standing up a second development machine (macOS, via Cursor, for access to stronger/
+newer LLMs for authoring and review) alongside this Windows laptop (local Ollama models,
+`wrangler` deploy credentials, the authoritative test suite). Full protocol, the exact prompt to
+hand the dev-machine agent, hard constraints, and a mandatory pre-commit checklist live in
+**`docs/operations/CROSS_MACHINE_DEV_WORKFLOW.md`** — read that file in full before working from
+any machine other than this one.
+
+**The short version:** git plus `.factory-plan/`'s existing 5-state status taxonomy already
+supports this split without inventing anything new. A dev-machine session may advance an item at
+most to `implemented_unverified` and must explicitly record what it could not test (Ollama/BMAD
+behavior, Windows-path-dependent code, `wrangler deploy`). This Windows laptop is the only machine
+that promotes an item to `verified_complete`, and only after independently re-running the real
+test suite itself — the same "evidence over claims" discipline already applied to every subagent
+in this project's history, just extended across a machine boundary instead of an agent boundary.
+
+**Two concrete fixes landed as part of setting this up:**
+- `node_modules/` and `.wrangler/` were found committed to git (3,132 files, including
+  Windows-only native binaries — `@esbuild/win32-x64`, `@cloudflare/workerd-windows-64`,
+  `sharp-win32-x64` — that would have broken a macOS checkout). Both are now gitignored and
+  untracked.
+- `FF-P01-01` was re-prioritized `high`→`critical` and promoted to `next_eligible_item` after
+  confirming (direct grep) that `factory/context/broker.py`, `factory/state.py`,
+  `factory/implementation/workspace.py`, `factory/sealed_qa/acceptance.py`, and
+  `factory/tools/worktrees.py` hardcode `C:\Factory`-style paths — exactly the kind of thing a
+  dev-machine session could silently depend on without ever finding out it's wrong.
