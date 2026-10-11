@@ -236,8 +236,35 @@ decisions:
     blocks: [FF-P00-03, FF-P07-01, FF-P12-02, FF-P17-01]
     related: [D-NEW-004, D-NEW-005, ADR-008]
 
+
+  - id: D-NEW-007
+    title: "AI Platform is a shared product-independent service; Feature Factory is one client"
+    status: decided
+    chosen_option: "A"
+    chosen_option_text: "Maintain a reusable AI Platform centered on OmniRoute and a provider-neutral API contract. Dark/Feature Factory consumes it as one client; new apps (translation, image workflows, and future tools) consume the same platform independently."
+    context: >
+      The project owner clarified on 2026-10-11 that the Dark Factory and AI Platform are separate
+      products. The immediate priority is stabilizing OmniRoute plus the shared platform before
+      relying on it for the Feature Factory or other LLM-enabled applications.
+    decisions_locked:
+      product_boundary: "AI Platform is independent of Feature Factory and must not depend on Factory-specific schemas, workflows, or UI."
+      gateway: "OmniRoute is the shared LLM routing gateway; client applications use a stable, provider-neutral API contract."
+      shared_capabilities: "Authentication, per-client access, model/route policy, FREE_ONLY defaults, timeouts/retries, usage/correlation telemetry, secret redaction, and health checks belong at the platform boundary where applicable."
+      clients: "Feature Factory, text translation, and future LLM-enabled applications are separate clients; no client should call provider APIs directly when the shared platform contract covers the use case."
+      media_scope: "Do not assume all image processing is an LLM task. Add image/multimodal or non-LLM processing capabilities behind explicit capability contracts when required."
+      operations: "Platform stability, security, observability, and spend controls are acceptance gates before migrating Feature Factory traffic. No production changes are authorized by this documentation decision."
+    consequences: >
+      This creates a platform-first workstream independent of Feature Factory phases. The existing
+      Worker, Factory monitoring UI, and Factory data model are not automatically the platform;
+      they may integrate with or display platform telemetry later, but must not define the shared
+      platform contract. OmniRoute remains an external dependency and its repository is not modified.
+    decided_by: "Project owner (conversation confirmation, 2026-10-11)"
+    decided_at: "2026-10-11"
+    blocks: [AI-PLATFORM-01, FF-P00-03, FF-P07-01, FF-P17-01]
+    related: [D-NEW-005, D-NEW-006, ADR-008, ADR-009]
+
 verification:
   method: "D-NEW-001..005 preserve earlier decisions; D-NEW-006 records the 2026-10-11 Release 1 cloud-only/OmniRoute decision. See ADR-008."
   open_decisions_requiring_human_input: []
   note: >
-    D-NEW-005 records the long-term API-first direction. D-NEW-006 narrows Release 1 to cloud-only via external OmniRoute and defers local fallback; D-NEW-004/005 are retained for history. ADR-008 is the binding Release 1 decision. ADR-001..007 remain in their prior status (accepted, superseded, or carried_forward).
+    D-NEW-005 records historical API-first direction. D-NEW-006 narrows Release 1 to cloud-only via external OmniRoute and defers local fallback. D-NEW-007 establishes the product boundary: AI Platform is shared and independent; Feature Factory is one client. ADR-008 and ADR-009 are the binding Release 1 and platform-boundary decisions. ADR-001..007 remain in their prior status (accepted, superseded, or carried_forward).
