@@ -1,0 +1,48 @@
+name: Worker CI
+
+on:
+  pull_request:
+    paths:
+      - "factory/intake/worker/**"
+      - ".github/workflows/worker-ci.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "factory/intake/worker/**"
+      - ".github/workflows/worker-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: worker-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-worker:
+    name: Typecheck and build Cloudflare Worker
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: factory/intake/worker
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: factory/intake/worker/package-lock.json
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build Worker bundle
+        run: npm run build
