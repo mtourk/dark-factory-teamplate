@@ -23,6 +23,13 @@ queue:
     status: verified_complete
     dependencies: [FF-P00-01]
     blocker_id: null
+  - id: FF-P00-03
+    phase: architecture-reconciliation
+    priority: critical
+    status: implemented_unverified
+    dependencies: [FF-P00-02]
+    blocker_id: null
+    note: "ADR-008 and CLOUD_FIRST_MIGRATION.md reconcile the release to cloud-only via external OmniRoute; review/merge this planning change and perform a read-only cloud deployment audit before selecting the next implementation task."
   - id: FF-P12-01
     phase: factoryflow-gateway
     priority: critical
@@ -348,3 +355,7 @@ previous_next_eligible_item_rationale: >
   exists) and ideally paired with fixing FB-02 (Gemini-as-reasoning-fallback) first. A
   third track, FB-09 (ContextBroker's three validation bugs), is already resolved per
   commit 1dd7c6d.
+
+# Release 1 architecture authority: docs/decisions/ADR-008-cloud-first-release.md.
+# Do not execute the historical local-first order until FF-P00-03 is reviewed/merged and the
+# current Cloudflare/OmniRoute/Oracle deployment has been audited read-only.
