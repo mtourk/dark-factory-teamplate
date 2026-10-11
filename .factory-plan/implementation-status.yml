@@ -84,7 +84,43 @@ items:
   verification_evidence: []
   last_updated_at: "2026-10-05"
   last_updated_by: "claude:2026-10-05"
-  next_action: "Begin FF-P03-01 (auth) as the first unblocked critical-path item — see dependency-graph.yml."
+  next_action: "Reconcile the plan against ADR-008 and .factory-plan/CLOUD_FIRST_MIGRATION.md (FF-P00-03) before selecting implementation work."
+  blocker_id: null
+
+- id: FF-P00-03
+  phase: architecture-reconciliation
+  title: Reconcile product plan and execution backlog with cloud-only Release 1 and external OmniRoute gateway
+  status: implemented_unverified
+  priority: critical
+  dependencies: [FF-P00-02]
+  repository_paths:
+    - docs/decisions/ADR-008-cloud-first-release.md
+    - .factory-plan/CLOUD_FIRST_MIGRATION.md
+    - New_FEATURE_FACTORY_MASTER_PLAN.md
+    - .factory-plan/MASTER_IMPLEMENTATION_PLAN.md
+    - .factory-plan/decisions.yml
+    - .factory-plan/backlog.yml
+    - .factory-plan/dependency-graph.yml
+    - .factory-plan/blockers.yml
+  existing_evidence:
+    - "Conflicting prior decisions identified: D-NEW-004 mandates local Ollama; D-NEW-005 allows local fallback and requires in-process LiteLLM; the current release direction is cloud-only via external OmniRoute, with local inference deferred."
+    - "ADR-008 and CLOUD_FIRST_MIGRATION.md created on branch docs/cloud-first-architecture-baseline; master plan and planning artifacts updated in the same branch."
+  missing_work:
+    - "Review the PR diff and merge after confirming the cross-file plan is accurate."
+    - "Perform a read-only audit of current OmniRoute deployment/configuration, Cloudflare resources/D1/Workers/Pages, Oracle VM availability, and DNS before implementation or infrastructure changes."
+    - "Re-evaluate the first eligible implementation item after the planning PR is merged; do not assume the historical local-first critical path remains correct."
+  acceptance_criteria:
+    - "The authoritative plan says Release 1 has no local Ollama, local laptop, or Tunnel dependency."
+    - "OmniRoute is the external provider-routing boundary and is not modified by this work."
+    - "FREE_ONLY is the default; all-cloud-route failure persists and pauses/retries work rather than losing it or silently paying."
+    - "Local LLM fallback is deferred as a future optional provider."
+    - "Backlog, dependency graph, decision register, blocker text, and master plan agree."
+  verification_commands: []
+  verification_evidence:
+    - "Cross-file consistency review is pending final PR review; no runtime or deployment behavior has been verified by this documentation change."
+  last_updated_at: "2026-10-11"
+  last_updated_by: "ChatGPT:2026-10-11"
+  next_action: "Review and merge the cloud-first planning PR, then run a read-only cloud deployment audit before choosing the next code task."
   blocker_id: null
 
 # ============================================================================
