@@ -1,0 +1,50 @@
+# AI Platform Read-Only Audit — 2026-10-11
+
+**Scope:** repository configuration and public documentation only.
+**Mode:** read-only. No production credentials used; no DNS, Cloudflare, Oracle Cloud, Docker, database, or deployment changes made.
+**Important limitation:** this document does not establish the live health or configuration of `llm.mtourk.com`, `monitor.mtourk.com`, `factory.mtourk.com`, or any Oracle Cloud VM. The current tool session has no connected Cloudflare/OCI control-plane action available, and public URL retrieval did not return usable page content. Treat live service state as **unverified**, not as confirmed down.
+
+## Executive summary
+
+The next priority is to stabilize the shared AI Platform and OmniRoute independently of Feature Factory. Static repository evidence confirms the existing Feature Factory Worker configuration still contains legacy Ollama references and a placeholder Cloudflare Access audience value. These are repository-state findings, not proof of what is currently deployed.
+
+OmniRoute's public documentation describes an OpenAI-compatible API, API-key controls, request logs, usage tracking, and provider routing/fallback features. These capabilities should be verified against the exact deployed version and settings before building duplicate platform services around them.
+
+## Findings
+
+| ID | Area | Evidence observed | Status | Impact / next action |
+|---|---|---|---|---|
+| AUD-01 | Product boundary | ADR-009 and the AI Platform master plan define OmniRoute as the shared LLM gateway and Feature Factory as one independent client. | Documented in PR #2; not yet merged | Preserve this boundary in all later implementation work. |
+| AUD-02 | Factory Worker config | `factory/intake/worker/wrangler.toml` on `main` still sets `OLLAMA_URL=https://ollama.mtourk.com` and an `CLOUDFLARE_ACCESS_AUD` placeholder beginning with `TODO`. | Verified in repository; deployed state unverified | Do not migrate or deploy this Worker until Access configuration and runtime settings are verified. Remove legacy Ollama dependency only in a later, reviewed code change. |
+| AUD-03 | Factory auth | `factory/intake/worker/src/index.ts` uses a list of routes requiring Cloudflare Access JWT verification, with selected GET endpoints deliberately public. | Verified in repository; correctness/live Access policy unverified | Audit every route and ensure public routes are explicitly allow-listed and safe; test preflight, public intake, and protected management endpoints. |
+| AUD-04 | OmniRoute capabilities | Public OmniRoute documentation describes API-key management, request logs, usage/cost analytics, provider/model routing, and media-related endpoints/features. | Documented by upstream project; exact deployment version/config unverified | Inventory the deployed version and built-in capabilities first; prefer built-in functions over duplicate routing/analytics services. |
+| AUD-05 | Free-only spend guard | No evidence from this read-only repository review proves that the live OmniRoute instance restricts every client to free-eligible routes or blocks paid fallback. | Unverified | Treat FREE_ONLY as a required acceptance test, not an assumed existing capability. Determine whether OmniRoute policies can enforce it; add an external guard only if needed. |
+| AUD-06 | Domain reachability | A public page fetch for the three known hostnames did not return usable page content in this audit session. | Inconclusive | This is not proof of downtime: Access, browser-only UI, networking, or the retrieval tool may prevent access. Verify from the actual deployment/control plane. |
+| AUD-07 | Cloudflare / Oracle Cloud | No connected Cloudflare or Oracle Cloud management action was available in this audit session. | Blocked for live verification | User must provide an authorized read-only route (e.g. connect the relevant account integration or share sanitized screenshots/exports). Do not request or paste secrets into chat or GitHub. |
+| AUD-08 | Monitoring | The existing Factory monitor is Ollama-centric and should not be treated as the shared AI Platform observability system. | Previously identified in repository review; live state unverified | First inventory OmniRoute's own logs/usage telemetry, then design a small platform-level correlation layer only for gaps. |
+
+## Platform stabilization gates
+
+Do not connect production Feature Factory traffic until evidence exists for all applicable gates:
+
+1. **Identity and access:** dashboard/admin access is protected; client API keys are required for proxy endpoints; keys can be scoped/revoked; browser code does not contain server credentials.
+2. **Route and spend policy:** a known list of allowed free-tier routes/models exists; paid routes and paid fallback are explicitly blocked unless the owner opts in; test requests confirm the behavior.
+3. **Health and reliability:** document the actual deployment version, readiness endpoint, restart behavior, storage persistence, backups, timeout limits, retry/fallback behavior, and recovery after upstream rate limits.
+4. **Telemetry:** request logs show application/client identity, model/route when available, latency, status, usage, and correlation ID. Prompt/response visibility is authenticated, access-controlled, redacted, and retention-limited. Never store private chain-of-thought or secrets.
+5. **Independent client test:** a minimal client unrelated to Feature Factory can call the shared API contract using a dedicated key.
+6. **Rollback:** exact deployed image/version/digest, configuration backup, data backup, and tested rollback instructions are documented before any production change.
+
+## Evidence required to complete the live audit
+
+Collect sanitized evidence (never secrets or full API keys):
+
+- OCI: VM state, region/shape, attached storage and backups, security-list/NSG ingress summary, and where the service is actually running.
+- OmniRoute: version/image tag or digest, base URL, API authentication mode, whether `REQUIRE_API_KEY` is enabled, health/readiness output, configured route/model names, and redacted settings relevant to fallback.
+- Spend: evidence that free-only routes are enforced and a paid route cannot be selected by fallback; use a safe test key and a non-production test where possible.
+- Cloudflare: Access application/policy summary and DNS/proxy status for the relevant hostnames; never export token values.
+- Observability: sample redacted request log with status, model/route, latency, usage, and client attribution.
+- Operations: restart/backup/rollback procedure and whether the persistent data directory survives container replacement.
+
+## Next action
+
+Complete the read-only live audit before implementing a new proxy, duplicating OmniRoute dashboards, changing Worker authentication, creating/rotating secrets, or deploying. If control-plane access remains unavailable, continue with a versioned platform API contract and automated tests using a local mock/staging endpoint, clearly labelled as unverified against production.
