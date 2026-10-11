@@ -96,29 +96,28 @@ blockers:
       implemented.
 
   - id: FB-04
-    title: "BMAD engine location/design not decided — real engine does not exist"
+    title: "Cloud-backed BMAD one-question engine not implemented"
     severity: critical
-    category: design-gap
+    category: missing-capability
     status: open
     discovered_in: "factory/analysis/bmad.py audit"
     evidence:
-      - "factory/analysis/bmad.py:110-206 discover_from_issue() is pure heuristic string-parsing of an already-filed GitHub issue — not an interactive one-question-at-a-time engine"
-      - "factory/analysis/bmad.py:100-108 self.gateway is accepted in __init__ but never called anywhere in the class"
-      - "No code anywhere implements §5.1-5.4's one-question-at-a-time protocol, numbered-options-plus-free-text format, or the mandatory delegated-assumption option"
+      - "factory/analysis/bmad.py:110-206 discover_from_issue() is heuristic parsing of an already-filed GitHub issue, not an interactive one-question-at-a-time engine."
+      - "factory/analysis/bmad.py:100-108 accepts self.gateway but does not call it; the Worker has no completed cloud-backed BMAD conversation service."
+      - "No verified implementation covers the one-question protocol, numbered choices plus free text, delegated-assumption option, durable conversation state, and live specification updates."
     blocks:
       - FF-P07-01
     impact: >
-      This is the structural heart of the product (§1's 'BMAD conversation UI', §5 in full) and it
-      does not exist in working form. FF-P07-01 cannot move past not_started until a design
-      decision is made: run BMAD inference in the Cloudflare Worker (near the UI, via a hosted
-      small model or Workers AI) vs. route every BMAD turn back to the local Ollama gateway over
-      the existing tunnel (reusing factory/analysis/bmad.py's gateway hook, finally wiring it up).
+      The BMAD conversation is central to the product but is not implemented in working form. The
+      missing capability remains a blocker; the previous local-vs-cloud design question is no longer
+      open. ADR-008 requires Release 1 BMAD reasoning to use the provider-neutral cloud adapter via
+      OmniRoute, without a local Ollama or Tunnel dependency.
     remediation:
-      - "Record the location decision in decisions.yml (new decision id, e.g. D-NEW-004) before writing code."
-      - "If local-Ollama-routed: wire bmad.py's unused self.gateway to a real model call implementing the one-question protocol; replace discover_from_issue()'s heuristics with it."
-      - "If Worker-hosted: design a new module in factory/intake/worker/src/ implementing the same protocol, and retire bmad.py's role to local-only fallback/dev-testing."
-      - "Either way: implement the mandatory 'use your best judgment and assumptions, stop asking' delegated option and live draft update (ties to FF-P08-01)."
-    owner: "human decision + agent implementation"
+      - "Implement the one-question BMAD protocol behind the configured OmniRoute-backed LLM adapter."
+      - "Persist each turn and the evolving draft in cloud storage; implement timeout/retry states without losing the conversation."
+      - "Include the mandatory delegated-assumption option and update live draft/acceptance criteria (FF-P08-01)."
+      - "Add tests for prompt/response redaction, provider failure, retry/resume, and question protocol."
+    owner: "agent implementation after FF-P00-03 reconciliation and cloud gateway audit"
     opened_at: "2026-10-05"
     closed_at: null
 

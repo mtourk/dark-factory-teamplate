@@ -269,3 +269,14 @@ in this project's history, just extended across a machine boundary instead of an
   `factory/implementation/workspace.py`, `factory/sealed_qa/acceptance.py`, and
   `factory/tools/worktrees.py` hardcode `C:\Factory`-style paths — exactly the kind of thing a
   dev-machine session could silently depend on without ever finding out it's wrong.
+
+
+---
+
+## Binding amendment — Release 1 cloud-only architecture (2026-10-11)
+
+The status narrative above is a historical snapshot from 2026-10-05 and must not be used as the current execution order without re-evaluation. Read `.factory-plan/CLOUD_FIRST_MIGRATION.md` and `docs/decisions/ADR-008-cloud-first-release.md` first.
+
+ADR-008 overrides any conflicting instructions in this plan that require a local Windows laptop, local Ollama, or Cloudflare Tunnel for Release 1. Use the existing external OmniRoute gateway through a provider-neutral Factory adapter. Cloud-to-cloud failover is allowed only when configured; FREE_ONLY remains the default and no paid usage may occur silently. When no eligible cloud route remains, preserve the run and pause/retry durably. Local LLM support is deferred as a future optional provider. Do not modify the OmniRoute repository, change DNS, provision/migrate the Oracle VM, or deploy production as part of this documentation decision.
+
+Immediate next step after this planning change: review/merge FF-P00-03, then perform a read-only audit of the actual Cloudflare, OmniRoute, Oracle VM, and DNS configuration. Recompute the first eligible implementation item from current evidence rather than trusting the stale local-first critical path.

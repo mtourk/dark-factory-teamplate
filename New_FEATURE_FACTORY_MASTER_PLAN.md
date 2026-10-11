@@ -123,7 +123,7 @@ Login
 → type text or speak
 → Gemini transcription only
 → user edits transcript
-→ local model + BMAD asks one multiple-choice question
+→ cloud LLM gateway (OmniRoute) + BMAD asks one multiple-choice question
 → user answers with option number or text/voice
 → acceptance criteria and specification update after each answer
 → conversation continues until BMAD quality gate passes or user selects
@@ -156,7 +156,8 @@ host:
   dedicated_vram_gb: 0
 local_inference:
   runtime: Ollama for Windows
-  cloud_fallback: prohibited
+  cloud_fallback: cloud_provider_failover_only
+  local_llm_fallback: deferred_until_after_release_1
   concurrency: 1 active implementation
   initial_context_tokens: 8192
   experimental_context_tokens: 16384
@@ -1190,3 +1191,18 @@ The complete product is done when:
 - implementation plan status can recover after interruption;
 - an existing-repository pilot passes end to end;
 - future ideas are separated from current scope.
+
+
+---
+
+# Binding architecture amendment — Release 1 is cloud-only (2026-10-11)
+
+**Read first:** `.factory-plan/CLOUD_FIRST_MIGRATION.md` and `docs/decisions/ADR-008-cloud-first-release.md`.
+
+This amendment takes precedence over conflicting instructions in this older plan, including the fixed-environment block in §2 and any journey, phase, queue, monitoring, or deployment text that makes a local Windows machine, local Ollama, or Cloudflare Tunnel a Release 1 dependency.
+
+For Release 1, model inference runs through the existing external OmniRoute gateway. Agents use a provider-neutral adapter and must not implement provider-specific fallback. Cloud-to-cloud routing is permitted only within configured policy; the default is free-tier-only with no silent paid spend. If all eligible cloud routes fail or are exhausted, persist the request/run and pause or retry it safely. Local Ollama is deferred as a future optional provider and is not part of the initial critical path.
+
+Cloudflare remains the portal/API/D1 layer. Oracle Cloud VM is a candidate for always-on services that do not fit Workers constraints, but no VM migration, DNS change, Tunnel change, or production deployment is implied by this documentation amendment. OmniRoute is an external dependency and its repository must not be modified as part of this work.
+
+The hostname roles and observability requirements are defined in `.factory-plan/CLOUD_FIRST_MIGRATION.md`. Existing DNS/resource state must be audited read-only before any infrastructure mutation. See ADR-008 for decision context and acceptance checks.

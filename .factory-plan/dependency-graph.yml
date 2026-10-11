@@ -11,6 +11,7 @@
 item_graph:
   FF-P00-01: { depends_on: [] }
   FF-P00-02: { depends_on: [FF-P00-01] }
+  FF-P00-03: { depends_on: [FF-P00-02], status: implemented_unverified, gated_by_decision: [D-NEW-006] }
   FF-P01-01: { depends_on: [], status: implemented_unverified }
   FF-P02-01: { depends_on: [] }
   FF-P02-02: { depends_on: [FF-P02-01], gated_by_blocker: [FB-05] }
@@ -19,7 +20,7 @@ item_graph:
   FF-P04-01: { depends_on: [FF-P03-01], gated_by_decision: [D-NEW-001, D-NEW-002], status: implemented }
   FF-P05-01: { depends_on: [FF-P04-01] }
   FF-P06-01: { depends_on: [FF-P04-01], gated_by_blocker: [FB-02] }
-  FF-P07-01: { depends_on: [FF-P03-01], gated_by_blocker: [FB-04], gated_by_decision: [D-NEW-004] }
+  FF-P07-01: { depends_on: [FF-P03-01], gated_by_blocker: [FB-04], gated_by_decision: [D-NEW-006], note: "Cloud-backed BMAD via OmniRoute; no local Ollama/Tunnel dependency." }
   FF-P08-01: { depends_on: [FF-P07-01] }
   FF-P09-01: { depends_on: [FF-P03-02] }
   FF-P09-02: { depends_on: [FF-P03-02] }
@@ -97,7 +98,8 @@ decision_gates:
   D-NEW-001: { gates: [FF-P04-01], status: decided, chosen_option: A, closed_at: "2026-10-05", note: "Reconciled with decisions.yml (status: decided since 2026-10-05); FF-P04-01 implemented against chosen_option A (extend vanilla JS in place)." }
   D-NEW-002: { gates: [FF-P03-01, FF-P04-01, FF-P07-01, FF-P09-01, FF-P09-02], status: decided, chosen_option: A }
   D-NEW-003: { gates: [FF-P03-02], status: open }
-  D-NEW-004: { gates: [FF-P07-01], status: open }
+  D-NEW-004: { gates: [], status: superseded, note: "Historical local-only decision superseded for Release 1 by D-NEW-005 and D-NEW-006." }
+  D-NEW-006: { gates: [FF-P00-03, FF-P07-01, FF-P12-02, FF-P17-01], status: decided, chosen_option: A, closed_at: "2026-10-11" }
 
 # --- blockers that must be closed before certain items can be verified_complete ---
 blocker_gates:
@@ -114,10 +116,11 @@ blocker_gates:
   FB-08: { gates: [FF-P16-01, FF-P17-01], status: open }
 
 critical_path: >
-  FF-P03-01 (auth, gated by D-NEW-002 + FB-03) is the single highest-leverage item: it directly
-  unblocks FF-P04-01 (app shell), which in turn unblocks FF-P05-01/06-01/13-02/17-01/18-01.
-  FF-P07-01 (BMAD, gated by D-NEW-004 + FB-04) is the second-highest-leverage item, unblocking
-  FF-P08-01 and feeding FF-P20-01 directly. Both are independent of each other and of
-  FF-P12-02/FB-07 (context-isolation fix) and FF-P14-03/FF-P15-01/FF-P16-01 (review->merge->deploy
-  chain) — these three tracks (auth, BMAD, review-chain) can proceed in parallel once their
-  respective decisions are made.
+  FF-P00-03 is the immediate planning gate: reconcile all execution artifacts with ADR-008 and
+  verify the current cloud deployment topology read-only before choosing the next code item.
+  After that, re-evaluate authentication/configuration and cloud-backed BMAD/monitoring priorities
+  using current evidence. Historical local Ollama/Tunnel dependencies are not Release 1 gates.
+  Do not rely on the 2026-10-05 local-first ordering until the reconciliation item is reviewed and merged.
+
+# Release 1 architecture authority: ADR-008. Local Ollama and Cloudflare Tunnel are deferred and
+# must not appear as required dependencies for cloud-first Release 1 items.

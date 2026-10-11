@@ -214,9 +214,30 @@ decisions:
     blocks: [FF-P22-01, FF-P22-02, FF-P24-01, FF-P25-01]
     related: [D-NEW-004, FB-02, ADR-001, ADR-002]
 
+  - id: D-NEW-006
+    title: "Release 1 runtime: cloud-only via OmniRoute; defer local LLM fallback"
+    status: decided
+    chosen_option: "A"
+    chosen_option_text: "Use the existing external OmniRoute gateway for all Release 1 model calls; allow policy-controlled cloud-to-cloud failover only; pause/resume durably when no eligible cloud route remains; defer local Ollama until after Release 1."
+    context: >
+      The project owner confirmed on 2026-10-11 that local LLM was intended as fallback, not primary. To reduce initial complexity and remove laptop/Tunnel dependencies, Release 1 starts without local inference while preserving the ability to add it later. The existing API-first plan's in-process LiteLLM and automatic local fallback instructions conflict with the intended OmniRoute-based cloud deployment.
+    decisions_locked:
+      release_1_runtime: "Cloud-only; no local Ollama, local laptop, or Cloudflare Tunnel dependency."
+      gateway: "Existing external OmniRoute service; treat it as a dependency, do not modify its repository."
+      routing: "Provider-neutral Factory adapter; cloud-to-cloud failover only when configured and permitted."
+      cost_policy: "FREE_ONLY by default; no silent paid usage. If no eligible route remains, persist and pause/retry the run."
+      local_llm: "Deferred optional provider; not implemented or required for Release 1."
+      monitoring: "Observe Factory-originated cloud model calls, retries, outcomes, latency, and redacted visible prompt/response data; never store private chain-of-thought."
+      hosting: "Cloudflare for portal/API/D1; Oracle VM is a candidate for always-on services after read-only deployment audit."
+    consequences: >
+      This narrows D-NEW-005's Release 1 implementation: use OmniRoute instead of adding an in-process LiteLLM gateway and custom quota-intelligence layer before need is demonstrated. It supersedes D-NEW-004's local-only execution and defers D-NEW-005's local fallback. The long-term provider-neutral API-first direction remains. No DNS, Tunnel, VM provisioning, schema migration, or production deployment is authorized by this documentation decision.
+    decided_by: "Project owner (conversation confirmation, 2026-10-11)"
+    decided_at: "2026-10-11"
+    blocks: [FF-P00-03, FF-P07-01, FF-P12-02, FF-P17-01]
+    related: [D-NEW-004, D-NEW-005, ADR-008]
+
 verification:
-  method: "Five decisions recorded as decided (D-NEW-001..005), all chosen by user Mohammad Tourk on 2026-10-05."
+  method: "D-NEW-001..005 preserve earlier decisions; D-NEW-006 records the 2026-10-11 Release 1 cloud-only/OmniRoute decision. See ADR-008."
   open_decisions_requiring_human_input: []
   note: >
-    D-NEW-005 (API-first migration) supersedes D-NEW-004's local-only mandate; both are retained for
-    history. ADR-001..007 remain in their prior status (accepted, superseded, or carried_forward).
+    D-NEW-005 records the long-term API-first direction. D-NEW-006 narrows Release 1 to cloud-only via external OmniRoute and defers local fallback; D-NEW-004/005 are retained for history. ADR-008 is the binding Release 1 decision. ADR-001..007 remain in their prior status (accepted, superseded, or carried_forward).
