@@ -61,15 +61,17 @@ A gate is not passed merely because a config file or dashboard exists; it needs 
 
 | ID | Work item | Status | Depends on |
 |---|---|---|---|
-| AI-PLATFORM-01 | Read-only inventory of OmniRoute and related cloud services/configuration | not_started | — |
-| AI-PLATFORM-02 | Define API contract, client identity, auth and policy boundaries | not_started | AI-PLATFORM-01 |
+| AI-PLATFORM-01 | Read-only inventory of OmniRoute and related cloud services/configuration | in_progress (live cloud portion blocked) | — |
+| AI-PLATFORM-02 | Define API contract, client identity, auth and policy boundaries | draft created; pending endpoint/config verification | AI-PLATFORM-01 |
 | AI-PLATFORM-03 | Build reproducible health, security, FREE_ONLY, timeout/retry and failure tests | not_started | AI-PLATFORM-02 |
 | AI-PLATFORM-04 | Establish redacted per-client telemetry and operational runbook | not_started | AI-PLATFORM-01, AI-PLATFORM-02 |
 | AI-PLATFORM-05 | Verify stable deployment, rollback and recovery without production changes during audit | not_started | AI-PLATFORM-03, AI-PLATFORM-04 |
 | AI-PLATFORM-06 | Integrate Feature Factory as a client through the shared contract | not_started | AI-PLATFORM-05 |
 | AI-PLATFORM-07 | Add translation and image/multimodal clients based on explicit capability needs | not_started | AI-PLATFORM-05 |
 
-## 5. Immediate next action: read-only audit
+## 5. Immediate next action: read-only audit and contract verification
+
+A draft client contract now exists at `docs/platform/AI-PLATFORM-CLIENT-CONTRACT-v0.1.md`. It is a proposal only; exact deployed endpoint behavior and FREE_ONLY enforcement remain unverified. The live cloud audit remains in progress, with Cloudflare/OCI control-plane verification blocked until an authorized read-only route is available.
 
 Collect evidence for:
 - OmniRoute repository/service ownership and current deployment location;
