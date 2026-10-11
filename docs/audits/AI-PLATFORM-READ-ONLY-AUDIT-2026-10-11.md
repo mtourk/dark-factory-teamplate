@@ -56,3 +56,18 @@ Collect sanitized evidence (never secrets or full API keys):
 ## Next action
 
 The first draft of the versioned client contract is now at `docs/platform/AI-PLATFORM-CLIENT-CONTRACT-v0.1.md`. Review and verify it against the actual deployed OmniRoute API before implementation. Complete the read-only live audit before implementing a new proxy, duplicating OmniRoute dashboards, changing Worker authentication, creating/rotating secrets, or deploying. Cloudflare/OCI control-plane verification remains blocked in this tool session; the reported Preview build still needs a root-directory/build-configuration check and rerun. In parallel, contract tests may be developed against a local mock/staging endpoint, clearly labelled as unverified against production.
+
+
+## Post-audit deployment evidence — 2026-10-11
+
+After the initial audit was written, the owner supplied a Cloudflare build/deploy log showing a successful deployment of the Worker from the repository's `main` branch.
+
+- Worker name: `dark-factory-teamplate`
+- Worker URL reported by Wrangler: `https://dark-factory-teamplate.mohammad-tourk.workers.dev`
+- Deployment version ID: `46914773-0485-4444-9d88-aa620e51529a`
+- D1 binding reported during deployment: `DB` → `dark-factory-intake` (database ID `ffdfcde8-d68d-48b6-9436-2b12b5245968`)
+- Result: Wrangler reported deployment success.
+
+This confirms that a deployment completed; it does **not** by itself verify the live Access application/policy, the placeholder Access audience value, or the security and behavior of every Worker route. Those items remain deferred for later review, per the owner's current priority. Do not interpret the deployment log as evidence that the shared AI Platform API contract has been validated against OmniRoute.
+
+The earlier Cloudflare Preview build issue is separate: the supplied successful deploy log shows a Worker deployment, but does not establish that the PR's Preview build settings are correctly configured. The Worker package is under `factory/intake/worker/`; inspect the Cloudflare Builds root/build configuration and rerun Preview when convenient. Do not add a dummy root README merely to hide an incorrect root-level Python package install.
