@@ -38,6 +38,7 @@
 import IntakeDB from "./db";
 import GeminiIntegration from "./gemini";
 import GitHubIntegration from "./github";
+import { AIPlatformError, getAIPlatformTextResponse } from "./ai-platform";
 
 export interface Env {
   DB: D1Database;
@@ -47,6 +48,11 @@ export interface Env {
   GITHUB_ORG: string;
   OLLAMA_URL?: string;
   OLLAMA_MODEL?: string;
+  AI_PLATFORM_BASE_URL?: string;
+  AI_PLATFORM_API_KEY?: string;
+  AI_PLATFORM_MODEL?: string;
+  AI_PLATFORM_ALLOWED_MODELS?: string;
+  AI_PLATFORM_TIMEOUT_SECONDS?: string;
   VERSION?: string;
   DEPLOYED_AT?: string;
   // FF-P03-01 / D-NEW-002 (Option A: Cloudflare Access only).
@@ -492,29 +498,31 @@ async function handleTextResponse(
     return json({ error: "Conversation not found" }, 404);
   }
 
-  // Debug: check if secrets exist
-  const hasGeminiKey = !!env.GEMINI_API_KEY;
-  if (!hasGeminiKey) {
-    console.error("GEMINI_API_KEY is missing from env:", Object.keys(env));
-    return json({ error: "GEMINI_API_KEY secret not configured", debug: { keys: Object.keys(env) } }, 500);
-  }
-
-  // Get full conversation history
+  // Get full conversation history and route text only through the shared AI Platform.
+  // No Gemini/Ollama fallback is permitted for text discovery.
   const messages = await db.getMessages(conversationId);
-
-  // Add the user's message to the history
   const allMessages = [...messages, { role: "user", text: body.text }];
 
-  // Get Gemini response (prefers local Ollama; db + conversationId let it log to ollama_requests
-  // for the monitoring dashboard — see handleOllamaStatus/handleOllamaHistory below)
-  const gemini = new GeminiIntegration(env.GEMINI_API_KEY, env.OLLAMA_URL, env.OLLAMA_MODEL);
-  const responseText = await gemini.getDiscoveryResponse(
-    allMessages.map((m) => ({ role: m.role, text: m.text })),
-    db,
-    conversationId
-  );
-
-  return json({ response: responseText });
+  try {
+    const responseText = await getAIPlatformTextResponse(
+      {
+        baseUrl: env.AI_PLATFORM_BASE_URL,
+        apiKey: env.AI_PLATFORM_API_KEY,
+        model: env.AI_PLATFORM_MODEL,
+        allowedModels: env.AI_PLATFORM_ALLOWED_MODELS,
+        timeoutSeconds: env.AI_PLATFORM_TIMEOUT_SECONDS,
+      },
+      allMessages.map((message) => ({ role: message.role, text: message.text })),
+      GeminiIntegration.getDiscoverySystemPrompt()
+    );
+    return json({ response: responseText });
+  } catch (error) {
+    if (error instanceof AIPlatformError) {
+      return json({ error: error.message }, error.statusCode);
+    }
+    console.error("AI Platform text request failed unexpectedly.");
+    return json({ error: "AI Platform request failed." }, 502);
+  }
 }
 
 /**
