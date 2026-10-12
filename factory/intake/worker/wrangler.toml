@@ -4,6 +4,8 @@ compatibility_date = "2024-10-15"
 
 [vars]
 GITHUB_API_BASE = "https://api.github.com"
+AI_PLATFORM_BASE_URL = "https://llm.mtourk.com"
+AI_PLATFORM_TIMEOUT_SECONDS = "60"
 ENVIRONMENT = "production"
 GITHUB_ORG = "mtourk"
 VERSION = "4"
