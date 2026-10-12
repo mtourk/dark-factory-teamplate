@@ -11,7 +11,7 @@
     "deploy:prod": "wrangler deploy --env production",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/**/*.ts",
-    "test": "esbuild test/ai-platform.test.ts --bundle --platform=node --target=node20 --outfile=test/.ai-platform.test.mjs && node --test test/.ai-platform.test.mjs"
+    "test": "esbuild test/ai-platform.test.ts --bundle --platform=node --format=esm --target=node20 --outfile=test/.ai-platform.test.mjs && node --test test/.ai-platform.test.mjs"
   },
   "dependencies": {
     "wrangler": "^3.26.0"
