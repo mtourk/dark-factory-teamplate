@@ -44,5 +44,8 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Test AI Platform client
+        run: npm run test
+
       - name: Build Worker bundle
         run: npm run build
