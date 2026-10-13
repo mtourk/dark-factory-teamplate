@@ -106,17 +106,18 @@ const ROUTES_REQUIRING_AUTH: RouteMatcher[] = [
   { method: "POST", pattern: /^\/conversations\/([^/]+)\/file-issue$/ },
   { method: "POST", pattern: /^\/conversations\/([^/]+)\/messages$/ },
   { method: "POST", pattern: /^\/conversations\/([^/]+)\/text-response$/ },
+  // These endpoints expose full prompts, responses, and provider telemetry.
+  { method: "GET", pattern: /^\/ai\/status$/ },
+  { method: "GET", pattern: /^\/ai\/history$/ },
 ];
 
-// Read-only / health-check routes: intentionally left open (e.g. for uptime
-// monitors that can't present an Access identity). Listed explicitly so the
-// "public by default" set is visible, not just implied by omission.
+// Only non-sensitive health/history compatibility endpoints remain public.
+// AI request status/history contain complete prompts and responses and must be
+// protected by a verified Cloudflare Access identity.
 const ROUTES_PUBLIC: RouteMatcher[] = [
   { method: "GET", pattern: /^\/version$/ },
   { method: "GET", pattern: /^\/ollama\/status$/ },
   { method: "GET", pattern: /^\/ollama\/history$/ },
-  { method: "GET", pattern: /^\/ai\/status$/ },
-  { method: "GET", pattern: /^\/ai\/history$/ },
 ];
 
 function matchesRoute(method: string, path: string, routes: RouteMatcher[]): boolean {
