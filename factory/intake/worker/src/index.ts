@@ -548,6 +548,12 @@ async function handleTextResponse(
       durationMs: Date.now() - startedAt,
       inputTokens: result.inputTokens,
       outputTokens: result.outputTokens,
+      costUsd: result.costUsd,
+      gatewayLatencyMs: result.gatewayLatencyMs,
+      fallbackAttempts: result.fallbackAttempts,
+      cacheHit: result.cacheHit,
+      gatewayRequestId: result.gatewayRequestId,
+      gatewayVersion: result.gatewayVersion,
       rawMetadata: JSON.stringify(result.rawMetadata),
     });
     return json({ response: result.content, request_id: aiRequest.id });
