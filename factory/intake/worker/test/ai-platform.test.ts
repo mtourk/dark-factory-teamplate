@@ -46,8 +46,20 @@ test("sends a provider-neutral chat-completions request and returns assistant te
     capturedUrl = String(input);
     capturedInit = init;
     return new Response(
-      JSON.stringify({ id: "chatcmpl-test", model: "provider/model-v1", provider: "example-provider", usage: { prompt_tokens: 12, completion_tokens: 8 }, choices: [{ message: { role: "assistant", content: "What problem should this solve?" } }] }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
+      JSON.stringify({ id: "chatcmpl-test", model: "provider/model-v1", usage: { prompt_tokens: 12, completion_tokens: 8 }, choices: [{ message: { role: "assistant", content: "What problem should this solve?" } }] }),
+      { status: 200, headers: {
+        "Content-Type": "application/json",
+        "X-OmniRoute-Provider": "example-provider",
+        "X-OmniRoute-Model": "provider/model-v1",
+        "X-OmniRoute-Tokens-In": "12",
+        "X-OmniRoute-Tokens-Out": "8",
+        "X-OmniRoute-Response-Cost": "0.0000000000",
+        "X-OmniRoute-Latency-Ms": "125",
+        "X-OmniRoute-Fallback-Attempts": "0",
+        "X-OmniRoute-Cache-Hit": "false",
+        "X-OmniRoute-Request-Id": "or-req-test",
+        "X-OmniRoute-Version": "test-version"
+      } }
     );
   };
 
@@ -64,6 +76,12 @@ test("sends a provider-neutral chat-completions request and returns assistant te
   assert.equal(result.provider, "example-provider");
   assert.equal(result.inputTokens, 12);
   assert.equal(result.outputTokens, 8);
+  assert.equal(result.costUsd, "0.0000000000");
+  assert.equal(result.gatewayLatencyMs, 125);
+  assert.equal(result.fallbackAttempts, 0);
+  assert.equal(result.cacheHit, false);
+  assert.equal(result.gatewayRequestId, "or-req-test");
+  assert.equal(result.gatewayVersion, "test-version");
   assert.match(result.promptText, /Build a report/);
   assert.equal(capturedUrl, "https://llm.example.test/v1/chat/completions");
   assert.equal((capturedInit?.headers as Record<string, string>).Authorization, "Bearer test-key-not-a-real-secret");
