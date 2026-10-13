@@ -46,7 +46,7 @@ test("sends a provider-neutral chat-completions request and returns assistant te
     capturedUrl = String(input);
     capturedInit = init;
     return new Response(
-      JSON.stringify({ choices: [{ message: { role: "assistant", content: "What problem should this solve?" } }] }),
+      JSON.stringify({ id: "chatcmpl-test", model: "provider/model-v1", provider: "example-provider", usage: { prompt_tokens: 12, completion_tokens: 8 }, choices: [{ message: { role: "assistant", content: "What problem should this solve?" } }] }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   };
@@ -58,7 +58,13 @@ test("sends a provider-neutral chat-completions request and returns assistant te
     fakeFetch
   );
 
-  assert.equal(result, "What problem should this solve?");
+  assert.equal(result.content, "What problem should this solve?");
+  assert.equal(result.requestedModel, "verified-free-model");
+  assert.equal(result.actualModel, "provider/model-v1");
+  assert.equal(result.provider, "example-provider");
+  assert.equal(result.inputTokens, 12);
+  assert.equal(result.outputTokens, 8);
+  assert.match(result.promptText, /Build a report/);
   assert.equal(capturedUrl, "https://llm.example.test/v1/chat/completions");
   assert.equal((capturedInit?.headers as Record<string, string>).Authorization, "Bearer test-key-not-a-real-secret");
   const body = JSON.parse(String(capturedInit?.body));
