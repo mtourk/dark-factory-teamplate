@@ -20,6 +20,12 @@ CREATE TABLE IF NOT EXISTS ai_requests (
   duration_ms INTEGER,
   input_tokens INTEGER,
   output_tokens INTEGER,
+  cost_usd TEXT,
+  gateway_latency_ms INTEGER,
+  fallback_attempts INTEGER NOT NULL DEFAULT 0,
+  cache_hit BOOLEAN,
+  gateway_request_id TEXT,
+  gateway_version TEXT,
   raw_metadata TEXT
 );
 
