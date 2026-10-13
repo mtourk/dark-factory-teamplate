@@ -318,7 +318,9 @@ export class IntakeDB {
     `).bind(
       input.actualModel, input.provider, input.responseText, input.responseText.length,
       new Date().toISOString(), input.durationMs, input.inputTokens, input.outputTokens,
-      input.rawMetadata, input.id
+      input.costUsd, input.gatewayLatencyMs, input.fallbackAttempts,
+      input.cacheHit === null ? null : Number(input.cacheHit), input.gatewayRequestId,
+      input.gatewayVersion, input.rawMetadata, input.id
     ).run();
   }
 
