@@ -42,6 +42,12 @@ const el = {
   detailRequestedModel: document.getElementById("detail-requested-model"),
   detailRequestType: document.getElementById("detail-request-type"),
   detailUsage: document.getElementById("detail-usage"),
+  detailCost: document.getElementById("detail-cost"),
+  detailGatewayLatency: document.getElementById("detail-gateway-latency"),
+  detailFallbackAttempts: document.getElementById("detail-fallback-attempts"),
+  detailCacheHit: document.getElementById("detail-cache-hit"),
+  detailGatewayRequestId: document.getElementById("detail-gateway-request-id"),
+  detailGatewayVersion: document.getElementById("detail-gateway-version"),
   detailStatus: document.getElementById("detail-status"),
   detailStarted: document.getElementById("detail-started"),
   detailCompleted: document.getElementById("detail-completed"),
@@ -209,6 +215,12 @@ function showDetail(req) {
   if (el.detailRequestedModel) el.detailRequestedModel.textContent = req.requested_model || "—";
   if (el.detailRequestType) el.detailRequestType.textContent = req.request_type || "—";
   if (el.detailUsage) el.detailUsage.textContent = [req.input_tokens != null ? `Input ${req.input_tokens}` : null, req.output_tokens != null ? `Output ${req.output_tokens}` : null].filter(Boolean).join(" / ") || "Not supplied";
+  if (el.detailCost) el.detailCost.textContent = req.cost_usd != null ? req.cost_usd : "Not supplied";
+  if (el.detailGatewayLatency) el.detailGatewayLatency.textContent = req.gateway_latency_ms != null ? `${req.gateway_latency_ms} ms` : "Not supplied";
+  if (el.detailFallbackAttempts) el.detailFallbackAttempts.textContent = req.fallback_attempts != null ? String(req.fallback_attempts) : "Not supplied";
+  if (el.detailCacheHit) el.detailCacheHit.textContent = req.cache_hit == null ? "Not supplied" : (req.cache_hit ? "Yes" : "No");
+  if (el.detailGatewayRequestId) el.detailGatewayRequestId.textContent = req.gateway_request_id || "Not supplied";
+  if (el.detailGatewayVersion) el.detailGatewayVersion.textContent = req.gateway_version || "Not supplied";
   el.detailStatus.textContent = req.status || "—";
   el.detailStarted.textContent = formatTimestamp(req.started_at);
   el.detailCompleted.textContent = formatTimestamp(req.completed_at);
