@@ -19,6 +19,17 @@ export interface AIPlatformMessage {
   text: string;
 }
 
+export interface AIPlatformTextResult {
+  content: string;
+  requestedModel: string;
+  actualModel: string | null;
+  provider: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  promptText: string;
+  rawMetadata: Record<string, unknown>;
+}
+
 export class AIPlatformError extends Error {
   constructor(
     public readonly statusCode: number,
@@ -111,7 +122,7 @@ export async function getAIPlatformTextResponse(
   messages: AIPlatformMessage[],
   systemPrompt: string,
   fetcher: typeof fetch = globalThis.fetch
-): Promise<string> {
+): Promise<AIPlatformTextResult> {
   const resolved = resolveConfiguration(config);
   const controller = new AbortController();
   const startedAt = Date.now();
@@ -124,6 +135,7 @@ export async function getAIPlatformTextResponse(
       content: message.text,
     })),
   ];
+  const promptText = JSON.stringify(chatMessages);
 
   try {
     const response = await fetcher(resolved.endpoint, {
@@ -168,7 +180,29 @@ export async function getAIPlatformTextResponse(
       throw new AIPlatformError(502, "AI Platform response did not contain assistant text.");
     }
 
-    return content;
+    const usage = payload?.usage && typeof payload.usage === "object" ? payload.usage : {};
+    const actualModel = typeof payload?.model === "string" ? payload.model : null;
+    const provider = typeof payload?.provider === "string"
+      ? payload.provider
+      : typeof payload?.metadata?.provider === "string"
+        ? payload.metadata.provider
+        : null;
+
+    return {
+      content,
+      requestedModel: resolved.model,
+      actualModel,
+      provider,
+      inputTokens: Number.isFinite(usage.prompt_tokens) ? Number(usage.prompt_tokens) : null,
+      outputTokens: Number.isFinite(usage.completion_tokens) ? Number(usage.completion_tokens) : null,
+      promptText,
+      rawMetadata: {
+        id: typeof payload?.id === "string" ? payload.id : null,
+        model: actualModel,
+        provider,
+        usage: Object.keys(usage).length ? usage : null,
+      },
+    };
   } catch (error) {
     if (error instanceof AIPlatformError) {
       throw error;
