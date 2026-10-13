@@ -106,9 +106,11 @@ const ROUTES_REQUIRING_AUTH: RouteMatcher[] = [
   { method: "POST", pattern: /^\/conversations\/([^/]+)\/file-issue$/ },
   { method: "POST", pattern: /^\/conversations\/([^/]+)\/messages$/ },
   { method: "POST", pattern: /^\/conversations\/([^/]+)\/text-response$/ },
-  // These endpoints expose full prompts, responses, and provider telemetry.
+  // All request-monitoring endpoints expose prompts, responses, or provider telemetry.
   { method: "GET", pattern: /^\/ai\/status$/ },
   { method: "GET", pattern: /^\/ai\/history$/ },
+  { method: "GET", pattern: /^\/ollama\/status$/ },
+  { method: "GET", pattern: /^\/ollama\/history$/ },
 ];
 
 // Only non-sensitive health/history compatibility endpoints remain public.
@@ -116,8 +118,6 @@ const ROUTES_REQUIRING_AUTH: RouteMatcher[] = [
 // protected by a verified Cloudflare Access identity.
 const ROUTES_PUBLIC: RouteMatcher[] = [
   { method: "GET", pattern: /^\/version$/ },
-  { method: "GET", pattern: /^\/ollama\/status$/ },
-  { method: "GET", pattern: /^\/ollama\/history$/ },
 ];
 
 function matchesRoute(method: string, path: string, routes: RouteMatcher[]): boolean {
