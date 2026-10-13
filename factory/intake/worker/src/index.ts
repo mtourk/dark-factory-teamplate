@@ -115,6 +115,8 @@ const ROUTES_PUBLIC: RouteMatcher[] = [
   { method: "GET", pattern: /^\/version$/ },
   { method: "GET", pattern: /^\/ollama\/status$/ },
   { method: "GET", pattern: /^\/ollama\/history$/ },
+  { method: "GET", pattern: /^\/ai\/status$/ },
+  { method: "GET", pattern: /^\/ai\/history$/ },
 ];
 
 function matchesRoute(method: string, path: string, routes: RouteMatcher[]): boolean {
@@ -286,6 +288,10 @@ export default {
         response = await handleOllamaStatus(env);
       } else if (path === "/ollama/history" && method === "GET") {
         response = await handleOllamaHistory(env, request);
+      } else if (path === "/ai/status" && method === "GET") {
+        response = await handleAIStatus(env);
+      } else if (path === "/ai/history" && method === "GET") {
+        response = await handleAIHistory(env, request);
       } else if (/^\/conversations\/([^/]+)$/.test(path) && method === "GET") {
         response = await handleGetConversation(env, path.match(/^\/conversations\/([^/]+)$/)![1]);
       } else if (/^\/conversations\/([^/]+)\/messages$/.test(path) && method === "POST") {
@@ -503,8 +509,27 @@ async function handleTextResponse(
   const messages = await db.getMessages(conversationId);
   const allMessages = [...messages, { role: "user", text: body.text }];
 
+  const systemPrompt = GeminiIntegration.getDiscoverySystemPrompt();
+  const promptText = JSON.stringify([
+    { role: "system", content: systemPrompt },
+    ...allMessages.map((message) => ({
+      role: message.role === "user" ? "user" : "assistant",
+      content: message.text,
+    })),
+  ]);
+  const requestedModel = env.AI_PLATFORM_MODEL?.trim() || "unconfigured";
+  const startedAt = Date.now();
+  // Fail closed if monitoring cannot persist the request: the goal is a complete,
+  // auditable history, not an AI call that silently bypasses Monitor.
+  const aiRequest = await db.createAIRequest({
+    conversationId,
+    requestType: "text-discovery",
+    requestedModel,
+    promptText,
+  });
+
   try {
-    const responseText = await getAIPlatformTextResponse(
+    const result = await getAIPlatformTextResponse(
       {
         baseUrl: env.AI_PLATFORM_BASE_URL,
         apiKey: env.AI_PLATFORM_API_KEY,
@@ -513,16 +538,64 @@ async function handleTextResponse(
         timeoutSeconds: env.AI_PLATFORM_TIMEOUT_SECONDS,
       },
       allMessages.map((message) => ({ role: message.role, text: message.text })),
-      GeminiIntegration.getDiscoverySystemPrompt()
+      systemPrompt
     );
-    return json({ response: responseText });
+    await db.completeAIRequest({
+      id: aiRequest.id,
+      actualModel: result.actualModel,
+      provider: result.provider,
+      responseText: result.content,
+      durationMs: Date.now() - startedAt,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+      rawMetadata: JSON.stringify(result.rawMetadata),
+    });
+    return json({ response: result.content, request_id: aiRequest.id });
   } catch (error) {
+    const safeMessage = error instanceof AIPlatformError
+      ? error.message
+      : "AI Platform request failed.";
+    try {
+      await db.failAIRequest(aiRequest.id, safeMessage, Date.now() - startedAt);
+    } catch {
+      console.error("Could not finalize AI request monitoring record.");
+    }
     if (error instanceof AIPlatformError) {
-      return json({ error: error.message }, error.statusCode);
+      return json({ error: error.message, request_id: aiRequest.id }, error.statusCode);
     }
     console.error("AI Platform text request failed unexpectedly.");
-    return json({ error: "AI Platform request failed." }, 502);
+    return json({ error: safeMessage, request_id: aiRequest.id }, 502);
   }
+}
+
+/** Provider-neutral monitoring status for Monitor.mtourk.com. */
+async function handleAIStatus(env: Env): Promise<Response> {
+  const db = new IntakeDB(env.DB);
+  const [pendingRequest, lastRequest, total] = await Promise.all([
+    db.getPendingAIRequest(),
+    db.getLastAIRequest(),
+    db.getAIRequestHistoryCount(),
+  ]);
+  return json({
+    service: "AI Request Monitor",
+    total_requests: total,
+    is_processing: !!pendingRequest,
+    current_request: pendingRequest,
+    last_request: lastRequest,
+  });
+}
+
+/** Paginated provider-neutral AI request history, newest first. */
+async function handleAIHistory(env: Env, request: Request): Promise<Response> {
+  const db = new IntakeDB(env.DB);
+  const url = new URL(request.url);
+  const limit = Math.min(Math.max(parseInt(url.searchParams.get("limit") || "50", 10) || 50, 1), 200);
+  const offset = Math.max(parseInt(url.searchParams.get("offset") || "0", 10) || 0, 0);
+  const [requests, total] = await Promise.all([
+    db.getAIRequestHistory(limit, offset),
+    db.getAIRequestHistoryCount(),
+  ]);
+  return json({ requests, total, limit, offset });
 }
 
 /**
