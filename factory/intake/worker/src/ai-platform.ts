@@ -26,6 +26,12 @@ export interface AIPlatformTextResult {
   provider: string | null;
   inputTokens: number | null;
   outputTokens: number | null;
+  costUsd: string | null;
+  gatewayLatencyMs: number | null;
+  fallbackAttempts: number;
+  cacheHit: boolean | null;
+  gatewayRequestId: string | null;
+  gatewayVersion: string | null;
   promptText: string;
   rawMetadata: Record<string, unknown>;
 }
@@ -182,25 +188,45 @@ export async function getAIPlatformTextResponse(
 
     const usage = payload?.usage && typeof payload.usage === "object" ? payload.usage : {};
     const actualModel = typeof payload?.model === "string" ? payload.model : null;
-    const provider = typeof payload?.provider === "string"
-      ? payload.provider
-      : typeof payload?.metadata?.provider === "string"
-        ? payload.metadata.provider
-        : null;
+    const provider = response.headers.get("x-omniroute-provider")
+      || (typeof payload?.provider === "string" ? payload.provider : null)
+      || (typeof payload?.metadata?.provider === "string" ? payload.metadata.provider : null);
+    const headerModel = response.headers.get("x-omniroute-model");
+    const headerTokensIn = response.headers.get("x-omniroute-tokens-in");
+    const headerTokensOut = response.headers.get("x-omniroute-tokens-out");
+    const headerLatency = response.headers.get("x-omniroute-latency-ms");
+    const headerFallbackAttempts = response.headers.get("x-omniroute-fallback-attempts");
+    const headerCacheHit = response.headers.get("x-omniroute-cache-hit");
 
     return {
       content,
       requestedModel: resolved.model,
-      actualModel,
+      actualModel: headerModel || actualModel,
       provider,
-      inputTokens: Number.isFinite(usage.prompt_tokens) ? Number(usage.prompt_tokens) : null,
-      outputTokens: Number.isFinite(usage.completion_tokens) ? Number(usage.completion_tokens) : null,
+      inputTokens: headerTokensIn !== null && Number.isFinite(Number(headerTokensIn))
+        ? Number(headerTokensIn)
+        : Number.isFinite(usage.prompt_tokens) ? Number(usage.prompt_tokens) : null,
+      outputTokens: headerTokensOut !== null && Number.isFinite(Number(headerTokensOut))
+        ? Number(headerTokensOut)
+        : Number.isFinite(usage.completion_tokens) ? Number(usage.completion_tokens) : null,
+      costUsd: response.headers.get("x-omniroute-response-cost"),
+      gatewayLatencyMs: headerLatency !== null && Number.isFinite(Number(headerLatency)) ? Number(headerLatency) : null,
+      fallbackAttempts: headerFallbackAttempts !== null && Number.isFinite(Number(headerFallbackAttempts)) ? Number(headerFallbackAttempts) : 0,
+      cacheHit: headerCacheHit === null ? null : headerCacheHit.toLowerCase() === "true",
+      gatewayRequestId: response.headers.get("x-omniroute-request-id"),
+      gatewayVersion: response.headers.get("x-omniroute-version"),
       promptText,
       rawMetadata: {
         id: typeof payload?.id === "string" ? payload.id : null,
-        model: actualModel,
+        model: headerModel || actualModel,
         provider,
         usage: Object.keys(usage).length ? usage : null,
+        costUsd: response.headers.get("x-omniroute-response-cost"),
+        gatewayLatencyMs: headerLatency,
+        fallbackAttempts: headerFallbackAttempts,
+        cacheHit: headerCacheHit,
+        gatewayRequestId: response.headers.get("x-omniroute-request-id"),
+        gatewayVersion: response.headers.get("x-omniroute-version"),
       },
     };
   } catch (error) {
