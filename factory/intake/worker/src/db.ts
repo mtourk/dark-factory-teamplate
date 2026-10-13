@@ -58,6 +58,33 @@ export interface OllamaRequest {
   duration_ms?: number;
 }
 
+export interface AIRequest {
+  id: string;
+  conversation_id?: string | null;
+  request_type: string;
+  requested_model: string;
+  actual_model?: string | null;
+  provider?: string | null;
+  status: "pending" | "success" | "error";
+  prompt_text: string;
+  prompt_length?: number;
+  response_text?: string | null;
+  response_length?: number | null;
+  error_message?: string | null;
+  started_at: string;
+  completed_at?: string | null;
+  duration_ms?: number | null;
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  cost_usd?: string | null;
+  gateway_latency_ms?: number | null;
+  fallback_attempts?: number;
+  cache_hit?: number | null;
+  gateway_request_id?: string | null;
+  gateway_version?: string | null;
+  raw_metadata?: string | null;
+}
+
 export class IntakeDB {
   constructor(private db: D1Database) {}
 
@@ -240,6 +267,99 @@ export class IntakeDB {
       ...row,
       synced: Boolean(row.synced),
     };
+  }
+
+    // === Provider-neutral AI Request Monitoring ===
+
+  async createAIRequest(input: {
+    conversationId: string | null;
+    requestType: string;
+    requestedModel: string;
+    promptText: string;
+  }): Promise<AIRequest> {
+    const result = await this.db.prepare(`
+      INSERT INTO ai_requests
+        (conversation_id, request_type, requested_model, status, prompt_text, prompt_length)
+      VALUES (?, ?, ?, 'pending', ?, ?)
+      RETURNING *
+    `).bind(
+      input.conversationId,
+      input.requestType,
+      input.requestedModel,
+      input.promptText,
+      input.promptText.length
+    ).first();
+    return result as unknown as AIRequest;
+  }
+
+  async completeAIRequest(input: {
+    id: string;
+    actualModel: string | null;
+    provider: string | null;
+    responseText: string;
+    durationMs: number;
+    inputTokens: number | null;
+    outputTokens: number | null;
+    costUsd: string | null;
+    gatewayLatencyMs: number | null;
+    fallbackAttempts: number;
+    cacheHit: boolean | null;
+    gatewayRequestId: string | null;
+    gatewayVersion: string | null;
+    rawMetadata: string;
+  }): Promise<void> {
+    await this.db.prepare(`
+      UPDATE ai_requests
+      SET status = 'success', actual_model = ?, provider = ?, response_text = ?,
+          response_length = ?, completed_at = ?, duration_ms = ?, input_tokens = ?,
+          output_tokens = ?, cost_usd = ?, gateway_latency_ms = ?, fallback_attempts = ?,
+          cache_hit = ?, gateway_request_id = ?, gateway_version = ?, raw_metadata = ?
+      WHERE id = ?
+    `).bind(
+      input.actualModel, input.provider, input.responseText, input.responseText.length,
+      new Date().toISOString(), input.durationMs, input.inputTokens, input.outputTokens,
+      input.costUsd, input.gatewayLatencyMs, input.fallbackAttempts,
+      input.cacheHit === null ? null : Number(input.cacheHit), input.gatewayRequestId,
+      input.gatewayVersion, input.rawMetadata, input.id
+    ).run();
+  }
+
+  async failAIRequest(id: string, errorMessage: string, durationMs: number): Promise<void> {
+    await this.db.prepare(`
+      UPDATE ai_requests
+      SET status = 'error', error_message = ?, completed_at = ?, duration_ms = ?
+      WHERE id = ?
+    `).bind(errorMessage, new Date().toISOString(), durationMs, id).run();
+  }
+
+  async getAIRequestHistory(limit = 50, offset = 0): Promise<AIRequest[]> {
+    const result = await this.db.prepare(`
+      SELECT id, conversation_id, request_type, requested_model, actual_model, provider,
+             status, prompt_text, prompt_length, response_text, response_length, error_message,
+             started_at, completed_at, duration_ms, input_tokens, output_tokens, cost_usd,
+             gateway_latency_ms, fallback_attempts, cache_hit, gateway_request_id, gateway_version, raw_metadata
+      FROM ai_requests ORDER BY started_at DESC LIMIT ? OFFSET ?
+    `).bind(limit, offset).all();
+    return (result.results || []) as unknown as AIRequest[];
+  }
+
+  async getAIRequestHistoryCount(): Promise<number> {
+    const result = await this.db.prepare("SELECT COUNT(*) AS count FROM ai_requests").first();
+    return ((result as any)?.count as number) ?? 0;
+  }
+
+  async getPendingAIRequest(): Promise<AIRequest | null> {
+    const result = await this.db.prepare(
+      "SELECT * FROM ai_requests WHERE status = 'pending' ORDER BY started_at DESC LIMIT 1"
+    ).first();
+    return (result as unknown as AIRequest) || null;
+  }
+
+  async getLastAIRequest(): Promise<AIRequest | null> {
+    const result = await this.db.prepare(
+      "SELECT * FROM ai_requests ORDER BY started_at DESC LIMIT 1"
+    ).first();
+    return (result as unknown as AIRequest) || null;
   }
 
   // === Ollama Request Monitoring (Phase 18+) ===

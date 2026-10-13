@@ -20,8 +20,9 @@
  * Auth (FF-P03-01, D-NEW-002 Option A — Cloudflare Access only):
  * - Mutating routes (POST /conversations, /projects, /messages, /file-issue,
  *   /text-response) require a verified Cf-Access-Jwt-Assertion header.
- * - Read-only/health routes (GET /version, /ollama/status, /ollama/history)
- *   stay public so uptime checks don't need an Access identity.
+ * - All monitoring routes (/ai/status, /ai/history, /ollama/status,
+ *   /ollama/history) require verified Access because they expose prompts
+ *   or responses. Only GET /version remains public for basic uptime checks.
  * - See verifyAccessJwt() below. No per-user D1 profile lookup yet (Phase 04+).
  *
  * Secrets (Cloudflare Worker environment):
@@ -32,12 +33,13 @@
  * - conversations, messages, pending_profiles, ollama_requests tables
  *
  * CORS: allow-listed origins only (factory.mtourk.com for the intake UI,
- * monitor.mtourk.com for the Ollama monitoring dashboard added in Phase 18+)
+ * monitor.mtourk.com for the provider-neutral AI request monitor).
  */
 
 import IntakeDB from "./db";
 import GeminiIntegration from "./gemini";
 import GitHubIntegration from "./github";
+import { AIPlatformError, getAIPlatformTextResponse } from "./ai-platform";
 
 export interface Env {
   DB: D1Database;
@@ -47,6 +49,11 @@ export interface Env {
   GITHUB_ORG: string;
   OLLAMA_URL?: string;
   OLLAMA_MODEL?: string;
+  AI_PLATFORM_BASE_URL?: string;
+  AI_PLATFORM_API_KEY?: string;
+  AI_PLATFORM_MODEL?: string;
+  AI_PLATFORM_ALLOWED_MODELS?: string;
+  AI_PLATFORM_TIMEOUT_SECONDS?: string;
   VERSION?: string;
   DEPLOYED_AT?: string;
   // FF-P03-01 / D-NEW-002 (Option A: Cloudflare Access only).
@@ -100,15 +107,18 @@ const ROUTES_REQUIRING_AUTH: RouteMatcher[] = [
   { method: "POST", pattern: /^\/conversations\/([^/]+)\/file-issue$/ },
   { method: "POST", pattern: /^\/conversations\/([^/]+)\/messages$/ },
   { method: "POST", pattern: /^\/conversations\/([^/]+)\/text-response$/ },
-];
-
-// Read-only / health-check routes: intentionally left open (e.g. for uptime
-// monitors that can't present an Access identity). Listed explicitly so the
-// "public by default" set is visible, not just implied by omission.
-const ROUTES_PUBLIC: RouteMatcher[] = [
-  { method: "GET", pattern: /^\/version$/ },
+  // All request-monitoring endpoints expose prompts, responses, or provider telemetry.
+  { method: "GET", pattern: /^\/ai\/status$/ },
+  { method: "GET", pattern: /^\/ai\/history$/ },
   { method: "GET", pattern: /^\/ollama\/status$/ },
   { method: "GET", pattern: /^\/ollama\/history$/ },
+];
+
+// Only non-sensitive health/history compatibility endpoints remain public.
+// AI request status/history contain complete prompts and responses and must be
+// protected by a verified Cloudflare Access identity.
+const ROUTES_PUBLIC: RouteMatcher[] = [
+  { method: "GET", pattern: /^\/version$/ },
 ];
 
 function matchesRoute(method: string, path: string, routes: RouteMatcher[]): boolean {
@@ -280,6 +290,10 @@ export default {
         response = await handleOllamaStatus(env);
       } else if (path === "/ollama/history" && method === "GET") {
         response = await handleOllamaHistory(env, request);
+      } else if (path === "/ai/status" && method === "GET") {
+        response = await handleAIStatus(env);
+      } else if (path === "/ai/history" && method === "GET") {
+        response = await handleAIHistory(env, request);
       } else if (/^\/conversations\/([^/]+)$/.test(path) && method === "GET") {
         response = await handleGetConversation(env, path.match(/^\/conversations\/([^/]+)$/)![1]);
       } else if (/^\/conversations\/([^/]+)\/messages$/.test(path) && method === "POST") {
@@ -492,29 +506,104 @@ async function handleTextResponse(
     return json({ error: "Conversation not found" }, 404);
   }
 
-  // Debug: check if secrets exist
-  const hasGeminiKey = !!env.GEMINI_API_KEY;
-  if (!hasGeminiKey) {
-    console.error("GEMINI_API_KEY is missing from env:", Object.keys(env));
-    return json({ error: "GEMINI_API_KEY secret not configured", debug: { keys: Object.keys(env) } }, 500);
-  }
-
-  // Get full conversation history
+  // Get full conversation history and route text only through the shared AI Platform.
+  // No Gemini/Ollama fallback is permitted for text discovery.
   const messages = await db.getMessages(conversationId);
-
-  // Add the user's message to the history
   const allMessages = [...messages, { role: "user", text: body.text }];
 
-  // Get Gemini response (prefers local Ollama; db + conversationId let it log to ollama_requests
-  // for the monitoring dashboard — see handleOllamaStatus/handleOllamaHistory below)
-  const gemini = new GeminiIntegration(env.GEMINI_API_KEY, env.OLLAMA_URL, env.OLLAMA_MODEL);
-  const responseText = await gemini.getDiscoveryResponse(
-    allMessages.map((m) => ({ role: m.role, text: m.text })),
-    db,
-    conversationId
-  );
+  const systemPrompt = GeminiIntegration.getDiscoverySystemPrompt();
+  const promptText = JSON.stringify([
+    { role: "system", content: systemPrompt },
+    ...allMessages.map((message) => ({
+      role: message.role === "user" ? "user" : "assistant",
+      content: message.text,
+    })),
+  ]);
+  const requestedModel = env.AI_PLATFORM_MODEL?.trim() || "unconfigured";
+  const startedAt = Date.now();
+  // Fail closed if monitoring cannot persist the request: the goal is a complete,
+  // auditable history, not an AI call that silently bypasses Monitor.
+  const aiRequest = await db.createAIRequest({
+    conversationId,
+    requestType: "text-discovery",
+    requestedModel,
+    promptText,
+  });
 
-  return json({ response: responseText });
+  try {
+    const result = await getAIPlatformTextResponse(
+      {
+        baseUrl: env.AI_PLATFORM_BASE_URL,
+        apiKey: env.AI_PLATFORM_API_KEY,
+        model: env.AI_PLATFORM_MODEL,
+        allowedModels: env.AI_PLATFORM_ALLOWED_MODELS,
+        timeoutSeconds: env.AI_PLATFORM_TIMEOUT_SECONDS,
+      },
+      allMessages.map((message) => ({ role: message.role, text: message.text })),
+      systemPrompt
+    );
+    await db.completeAIRequest({
+      id: aiRequest.id,
+      actualModel: result.actualModel,
+      provider: result.provider,
+      responseText: result.content,
+      durationMs: Date.now() - startedAt,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+      costUsd: result.costUsd,
+      gatewayLatencyMs: result.gatewayLatencyMs,
+      fallbackAttempts: result.fallbackAttempts,
+      cacheHit: result.cacheHit,
+      gatewayRequestId: result.gatewayRequestId,
+      gatewayVersion: result.gatewayVersion,
+      rawMetadata: JSON.stringify(result.rawMetadata),
+    });
+    return json({ response: result.content, request_id: aiRequest.id });
+  } catch (error) {
+    const safeMessage = error instanceof AIPlatformError
+      ? error.message
+      : "AI Platform request failed.";
+    try {
+      await db.failAIRequest(aiRequest.id, safeMessage, Date.now() - startedAt);
+    } catch {
+      console.error("Could not finalize AI request monitoring record.");
+    }
+    if (error instanceof AIPlatformError) {
+      return json({ error: error.message, request_id: aiRequest.id }, error.statusCode);
+    }
+    console.error("AI Platform text request failed unexpectedly.");
+    return json({ error: safeMessage, request_id: aiRequest.id }, 502);
+  }
+}
+
+/** Provider-neutral monitoring status for Monitor.mtourk.com. */
+async function handleAIStatus(env: Env): Promise<Response> {
+  const db = new IntakeDB(env.DB);
+  const [pendingRequest, lastRequest, total] = await Promise.all([
+    db.getPendingAIRequest(),
+    db.getLastAIRequest(),
+    db.getAIRequestHistoryCount(),
+  ]);
+  return json({
+    service: "AI Request Monitor",
+    total_requests: total,
+    is_processing: !!pendingRequest,
+    current_request: pendingRequest,
+    last_request: lastRequest,
+  });
+}
+
+/** Paginated provider-neutral AI request history, newest first. */
+async function handleAIHistory(env: Env, request: Request): Promise<Response> {
+  const db = new IntakeDB(env.DB);
+  const url = new URL(request.url);
+  const limit = Math.min(Math.max(parseInt(url.searchParams.get("limit") || "50", 10) || 50, 1), 200);
+  const offset = Math.max(parseInt(url.searchParams.get("offset") || "0", 10) || 0, 0);
+  const [requests, total] = await Promise.all([
+    db.getAIRequestHistory(limit, offset),
+    db.getAIRequestHistoryCount(),
+  ]);
+  return json({ requests, total, limit, offset });
 }
 
 /**
