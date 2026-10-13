@@ -1,12 +1,9 @@
 /**
- * Dark Factory — Ollama Monitor (Phase 18+)
+ * Dark Factory — AI Request Monitor
  *
- * Polls the intake Worker's /ollama/status and /ollama/history endpoints to show:
- * - Live status: is Ollama reachable, what's loaded, is a request currently in flight
- * - Full history: every past request logged to the ollama_requests table
- *
- * Reuses the same Worker as the intake app (it owns the D1 database and the
- * server-side fetch to ollama.mtourk.com) — this page is read-only against it.
+ * Polls the intake Worker's provider-neutral /ai/status and /ai/history endpoints.
+ * It displays requests routed through OmniRoute, including requested/actual model,
+ * provider metadata when supplied, prompts, responses, usage, and failures.
  */
 
 const WORKER_URL = "https://dark-factory-intake.mohammad-tourk.workers.dev";
@@ -41,6 +38,10 @@ const el = {
   detailCloseBtn: document.getElementById("detail-close-btn"),
   detailId: document.getElementById("detail-id"),
   detailModel: document.getElementById("detail-model"),
+  detailProvider: document.getElementById("detail-provider"),
+  detailRequestedModel: document.getElementById("detail-requested-model"),
+  detailRequestType: document.getElementById("detail-request-type"),
+  detailUsage: document.getElementById("detail-usage"),
   detailStatus: document.getElementById("detail-status"),
   detailStarted: document.getElementById("detail-started"),
   detailCompleted: document.getElementById("detail-completed"),
@@ -85,12 +86,12 @@ function restartAutoRefresh() {
 
 async function refreshStatus() {
   try {
-    const response = await fetch(`${WORKER_URL}/ollama/status`);
+    const response = await fetch(`${WORKER_URL}/ai/status`);
     if (!response.ok) throw new Error(`Status ${response.status}`);
     const data = await response.json();
     renderStatus(data);
   } catch (error) {
-    console.error("Failed to fetch Ollama status:", error);
+    console.error("Failed to fetch AI monitor status:", error);
     el.statusDot.className = "status-dot down";
     el.statusReachable.textContent = "Error";
     el.statusUpdated.textContent = `Failed to reach monitor API: ${error.message}`;
@@ -98,25 +99,20 @@ async function refreshStatus() {
 }
 
 function renderStatus(data) {
-  el.statusReachable.textContent = data.reachable ? "Yes" : "No";
+  el.statusReachable.textContent = "Connected";
+  el.statusLoaded.textContent = String(data.total_requests ?? 0);
+  el.statusGenerating.textContent = data.is_processing ? "Yes" : "No";
 
-  const models = (data.loaded_models || []).map((m) => m.name || m.model).filter(Boolean);
-  el.statusLoaded.textContent = models.length ? models.join(", ") : "(none loaded)";
-
-  el.statusGenerating.textContent = data.is_generating ? "Yes" : "No";
-
-  if (!data.reachable) {
-    el.statusDot.className = "status-dot down";
-  } else if (data.is_generating) {
+  if (data.is_processing) {
     el.statusDot.className = "status-dot busy";
   } else {
     el.statusDot.className = "status-dot ok";
   }
 
-  if (data.is_generating && data.current_request) {
+  if (data.is_processing && data.current_request) {
     el.currentRequest.classList.remove("hidden");
     const req = data.current_request;
-    el.currentModel.textContent = req.model || "—";
+    el.currentModel.textContent = req.actual_model || req.requested_model || "—";
     el.currentStarted.textContent = formatTimestamp(req.started_at);
     el.currentElapsed.textContent = formatElapsed(req.started_at);
     el.currentPrompt.textContent = req.prompt_text || "—";
@@ -147,7 +143,7 @@ async function refreshHistory() {
 
   try {
     const response = await fetch(
-      `${WORKER_URL}/ollama/history?limit=${HISTORY_PAGE_SIZE}&offset=${historyOffset}`
+      `${WORKER_URL}/ai/history?limit=${HISTORY_PAGE_SIZE}&offset=${historyOffset}`
     );
     if (!response.ok) throw new Error(`Status ${response.status}`);
     const data = await response.json();
@@ -155,7 +151,7 @@ async function refreshHistory() {
     renderHistory(data.requests || []);
     renderPagination();
   } catch (error) {
-    console.error("Failed to fetch Ollama history:", error);
+    console.error("Failed to fetch AI request history:", error);
     el.historyBody.innerHTML = "";
     el.historyEmpty.textContent = `Failed to load history: ${error.message}`;
     el.historyEmpty.classList.remove("hidden");
@@ -181,7 +177,7 @@ function renderHistory(requests) {
     <tr data-index="${i}">
       <td>${formatTimestamp(req.started_at)}</td>
       <td><span class="badge ${req.status}">${req.status}</span></td>
-      <td>${escapeHtml(req.model || "—")}</td>
+      <td>${escapeHtml([req.provider, req.actual_model || req.requested_model].filter(Boolean).join(" / ") || "—")}</td>
       <td><span class="cell-truncate">${escapeHtml(req.prompt_text || "—")}</span></td>
       <td><span class="cell-truncate">${escapeHtml(req.response_text || req.error_message || "—")}</span></td>
       <td>${req.duration_ms != null ? `${req.duration_ms} ms` : "—"}</td>
@@ -208,7 +204,11 @@ function renderPagination() {
 
 function showDetail(req) {
   el.detailId.textContent = req.id || "—";
-  el.detailModel.textContent = req.model || "—";
+  el.detailModel.textContent = req.actual_model || req.requested_model || "—";
+  if (el.detailProvider) el.detailProvider.textContent = req.provider || "Not supplied by gateway";
+  if (el.detailRequestedModel) el.detailRequestedModel.textContent = req.requested_model || "—";
+  if (el.detailRequestType) el.detailRequestType.textContent = req.request_type || "—";
+  if (el.detailUsage) el.detailUsage.textContent = [req.input_tokens != null ? `Input ${req.input_tokens}` : null, req.output_tokens != null ? `Output ${req.output_tokens}` : null].filter(Boolean).join(" / ") || "Not supplied";
   el.detailStatus.textContent = req.status || "—";
   el.detailStarted.textContent = formatTimestamp(req.started_at);
   el.detailCompleted.textContent = formatTimestamp(req.completed_at);
