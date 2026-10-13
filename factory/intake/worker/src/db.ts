@@ -76,6 +76,12 @@ export interface AIRequest {
   duration_ms?: number | null;
   input_tokens?: number | null;
   output_tokens?: number | null;
+  cost_usd?: string | null;
+  gateway_latency_ms?: number | null;
+  fallback_attempts?: number;
+  cache_hit?: number | null;
+  gateway_request_id?: string | null;
+  gateway_version?: string | null;
   raw_metadata?: string | null;
 }
 
@@ -294,13 +300,20 @@ export class IntakeDB {
     durationMs: number;
     inputTokens: number | null;
     outputTokens: number | null;
+    costUsd: string | null;
+    gatewayLatencyMs: number | null;
+    fallbackAttempts: number;
+    cacheHit: boolean | null;
+    gatewayRequestId: string | null;
+    gatewayVersion: string | null;
     rawMetadata: string;
   }): Promise<void> {
     await this.db.prepare(`
       UPDATE ai_requests
       SET status = 'success', actual_model = ?, provider = ?, response_text = ?,
           response_length = ?, completed_at = ?, duration_ms = ?, input_tokens = ?,
-          output_tokens = ?, raw_metadata = ?
+          output_tokens = ?, cost_usd = ?, gateway_latency_ms = ?, fallback_attempts = ?,
+          cache_hit = ?, gateway_request_id = ?, gateway_version = ?, raw_metadata = ?
       WHERE id = ?
     `).bind(
       input.actualModel, input.provider, input.responseText, input.responseText.length,
@@ -321,7 +334,8 @@ export class IntakeDB {
     const result = await this.db.prepare(`
       SELECT id, conversation_id, request_type, requested_model, actual_model, provider,
              status, prompt_text, prompt_length, response_text, response_length, error_message,
-             started_at, completed_at, duration_ms, input_tokens, output_tokens, raw_metadata
+             started_at, completed_at, duration_ms, input_tokens, output_tokens, cost_usd,
+             gateway_latency_ms, fallback_attempts, cache_hit, gateway_request_id, gateway_version, raw_metadata
       FROM ai_requests ORDER BY started_at DESC LIMIT ? OFFSET ?
     `).bind(limit, offset).all();
     return (result.results || []) as unknown as AIRequest[];
