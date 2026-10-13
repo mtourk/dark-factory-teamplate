@@ -26,8 +26,9 @@ The application fails closed if any required setting is missing, or if the confi
 - Monitor uses the new `GET /ai/status` and `GET /ai/history` endpoints. The old `/ollama/*` endpoints remain available for historical compatibility.
 - OmniRoute response headers are the source of truth for actual provider/model, token counts, reported cost, latency, cache hit, fallback attempts, request ID, and gateway version. Fields remain blank when the gateway does not provide them.
 - Request history contains full prompts and responses. The Worker now requires a verified Cloudflare Access JWT for `/ai/status`, `/ai/history`, `/ollama/status`, and `/ollama/history`; only `/version` remains public among the health/monitoring endpoints.
-- Before production exposure, configure Cloudflare Access for `monitor.mtourk.com` and the Worker hostname used by the monitor's browser requests. Confirm the Access Application AUD and team domain match the Worker variables. CORS alone is not access control.
-- Until that Access configuration is complete, Monitor requests to protected history/status endpoints are expected to return `401`; do not make the routes public as a workaround.
+- **Hostname blocker to resolve before testing the browser UI:** both `factory/intake/web/app.js` and `factory/monitor/web/app.js` currently call `https://dark-factory-intake.mohammad-tourk.workers.dev` directly. That hostname is not automatically protected just because `monitor.mtourk.com` has an Access application. Create/verify a custom API hostname routed to this Worker and protected by Cloudflare Access, then update both frontends to call that hostname. Do not invent a hostname or switch back to public monitoring endpoints as a workaround.
+- Configure Cloudflare Access for `monitor.mtourk.com` and the custom API hostname used by browser requests. Confirm the Access Application AUD and team domain match the Worker variables. CORS alone is not access control.
+- Until that Access configuration and frontend hostname change are complete, Monitor requests to protected history/status endpoints are expected to fail; a `401` is intentional fail-closed behavior.
 
 ## Behavior
 
@@ -42,7 +43,7 @@ The application fails closed if any required setting is missing, or if the confi
 
 1. Verify the exact deployed OmniRoute version, chat-completions path, Bearer-key authentication, and model alias.
 2. Verify server-side OmniRoute policy rejects paid-only routes and disables paid fallback for the dedicated client key.
-3. Configure Cloudflare Access for Monitor and the Worker hostname, verify the Access AUD/team-domain values, and confirm unauthenticated calls to all four monitoring endpoints return `401`.
+3. Create/verify a custom API hostname routed to this Worker and protected by Cloudflare Access; update both frontend `WORKER_URL` constants to it. Configure Access for Monitor and the API hostname, verify the Access AUD/team-domain values, and confirm unauthenticated calls to all four monitoring endpoints return `401`.
 4. Apply the D1 migration in a controlled step, then set the five Worker settings above in a non-production/Preview environment. Never paste the secret into GitHub, chat, or build logs.
 5. Run Worker CI and the unit tests, including the OmniRoute telemetry-header assertions.
 6. Test a valid request and inspect OmniRoute's request/usage records to confirm the actual route was free.
