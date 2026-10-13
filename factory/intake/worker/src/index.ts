@@ -20,8 +20,9 @@
  * Auth (FF-P03-01, D-NEW-002 Option A — Cloudflare Access only):
  * - Mutating routes (POST /conversations, /projects, /messages, /file-issue,
  *   /text-response) require a verified Cf-Access-Jwt-Assertion header.
- * - Read-only/health routes (GET /version, /ollama/status, /ollama/history)
- *   stay public so uptime checks don't need an Access identity.
+ * - All monitoring routes (/ai/status, /ai/history, /ollama/status,
+ *   /ollama/history) require verified Access because they expose prompts
+ *   or responses. Only GET /version remains public for basic uptime checks.
  * - See verifyAccessJwt() below. No per-user D1 profile lookup yet (Phase 04+).
  *
  * Secrets (Cloudflare Worker environment):
@@ -32,7 +33,7 @@
  * - conversations, messages, pending_profiles, ollama_requests tables
  *
  * CORS: allow-listed origins only (factory.mtourk.com for the intake UI,
- * monitor.mtourk.com for the Ollama monitoring dashboard added in Phase 18+)
+ * monitor.mtourk.com for the provider-neutral AI request monitor).
  */
 
 import IntakeDB from "./db";
